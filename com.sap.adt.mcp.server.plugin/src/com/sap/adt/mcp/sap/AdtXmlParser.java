@@ -616,6 +616,142 @@ public final class AdtXmlParser {
         return result;
     }
 
+    /**
+     * Parse ABAP documentation response (HTML/XML mixed content).
+     * Extracts readable text from the documentation.
+     */
+    public static String parseAbapDocu(String content) {
+        if (isBlank(content)) return "";
+
+        StringBuilder result = new StringBuilder();
+
+        try {
+            // If it's XML, try to parse it
+            if (content.trim().startsWith("<?xml") || content.trim().startsWith("<")) {
+                try {
+                    Document doc = parseDocument(content);
+
+                    // Look for documentation text in various elements
+                    NodeList docuNodes = doc.getElementsByTagName("documentation");
+                    if (docuNodes.getLength() > 0) {
+                        result.append(extractTextContent(docuNodes.item(0)));
+                    }
+
+                    // Also check for docu:documentation
+                    docuNodes = doc.getElementsByTagName("docu:documentation");
+                    if (docuNodes.getLength() > 0) {
+                        result.append(extractTextContent(docuNodes.item(0)));
+                    }
+
+                    // Check for shortText elements
+                    NodeList shortTexts = doc.getElementsByTagName("shortText");
+                    for (int i = 0; i < shortTexts.getLength(); i++) {
+                        String text = shortTexts.item(i).getTextContent();
+                        if (text != null && !text.trim().isEmpty()) {
+                            if (result.length() > 0) result.append("\n");
+                            result.append(text.trim());
+                        }
+                    }
+
+                    // Check for longText elements
+                    NodeList longTexts = doc.getElementsByTagName("longText");
+                    for (int i = 0; i < longTexts.getLength(); i++) {
+                        String text = longTexts.item(i).getTextContent();
+                        if (text != null && !text.trim().isEmpty()) {
+                            if (result.length() > 0) result.append("\n\n");
+                            result.append(text.trim());
+                        }
+                    }
+
+                    // If still empty, try to get all text content
+                    if (result.length() == 0) {
+                        result.append(cleanHtmlTags(doc.getDocumentElement().getTextContent()));
+                    }
+                } catch (Exception e) {
+                    // If XML parsing fails, treat as HTML/text
+                    result.append(cleanHtmlTags(content));
+                }
+            } else {
+                // Plain text or HTML
+                result.append(cleanHtmlTags(content));
+            }
+        } catch (Exception e) {
+            System.err.println("AdtXmlParser.parseAbapDocu failed: " + e.getMessage());
+            // Return cleaned content as fallback
+            return cleanHtmlTags(content);
+        }
+
+        return result.toString().trim();
+    }
+
+    /**
+     * Extract text content from a node, preserving some structure.
+     */
+    private static String extractTextContent(Node node) {
+        if (node == null) return "";
+
+        StringBuilder sb = new StringBuilder();
+        NodeList children = node.getChildNodes();
+
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child.getNodeType() == Node.TEXT_NODE) {
+                String text = child.getTextContent();
+                if (text != null && !text.trim().isEmpty()) {
+                    sb.append(text.trim()).append(" ");
+                }
+            } else if (child.getNodeType() == Node.ELEMENT_NODE) {
+                String tagName = child.getNodeName().toLowerCase();
+                // Add newlines for block elements
+                if (tagName.equals("p") || tagName.equals("br") || tagName.equals("div")
+                        || tagName.equals("li") || tagName.equals("tr")) {
+                    sb.append("\n");
+                }
+                sb.append(extractTextContent(child));
+                if (tagName.equals("p") || tagName.equals("div") || tagName.equals("li")) {
+                    sb.append("\n");
+                }
+            }
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * Remove HTML tags and clean up text.
+     */
+    private static String cleanHtmlTags(String html) {
+        if (html == null) return "";
+
+        // Replace common HTML entities
+        String text = html
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&nbsp;", " ")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'");
+
+        // Replace block elements with newlines
+        text = text.replaceAll("(?i)<br\\s*/?>", "\n");
+        text = text.replaceAll("(?i)</p>", "\n\n");
+        text = text.replaceAll("(?i)</div>", "\n");
+        text = text.replaceAll("(?i)</li>", "\n");
+        text = text.replaceAll("(?i)</tr>", "\n");
+        text = text.replaceAll("(?i)<li>", "• ");
+
+        // Remove all remaining HTML tags
+        text = text.replaceAll("<[^>]+>", "");
+
+        // Clean up whitespace
+        text = text.replaceAll("[ \\t]+", " ");
+        text = text.replaceAll("\n ", "\n");
+        text = text.replaceAll(" \n", "\n");
+        text = text.replaceAll("\n{3,}", "\n\n");
+
+        return text.trim();
+    }
+
     private static boolean isBlank(String s) {
         return s == null || s.trim().isEmpty();
     }

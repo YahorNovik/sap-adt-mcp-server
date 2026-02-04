@@ -198,6 +198,9 @@ public class McpServerView extends ViewPart {
         tools.add(new UsageReferencesTool(adtClient));
         tools.add(new SqlQueryTool(adtClient));
 
+        // Documentation
+        tools.add(new AbapDocuTool(adtClient));
+
         mcpServer.registerTools(tools);
     }
 
