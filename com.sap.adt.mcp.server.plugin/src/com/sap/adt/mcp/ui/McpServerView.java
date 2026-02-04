@@ -232,17 +232,37 @@ public class McpServerView extends ViewPart {
             }
 
             File configFile = new File(claudeDir, "mcp_servers.json");
-            String config = "{\n"
-                    + "  \"sap-adt\": {\n"
-                    + "    \"url\": \"http://localhost:" + DEFAULT_PORT + "/mcp\"\n"
-                    + "  }\n"
-                    + "}\n";
 
+            // Read existing config or create new one
+            com.google.gson.JsonObject config = new com.google.gson.JsonObject();
+            if (configFile.exists()) {
+                try (java.io.FileReader reader = new java.io.FileReader(configFile)) {
+                    config = com.google.gson.JsonParser.parseReader(reader).getAsJsonObject();
+                    appendOutput("Updating existing MCP config...\n");
+                } catch (Exception e) {
+                    // If parsing fails, start fresh
+                    config = new com.google.gson.JsonObject();
+                }
+            }
+
+            // Add/update sap-adt entry
+            com.google.gson.JsonObject sapAdt = new com.google.gson.JsonObject();
+            sapAdt.addProperty("url", "http://localhost:" + DEFAULT_PORT + "/mcp");
+            config.add("sap-adt", sapAdt);
+
+            // Write merged config with pretty printing
+            com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
             try (FileWriter writer = new FileWriter(configFile)) {
-                writer.write(config);
+                writer.write(gson.toJson(config));
             }
 
             appendOutput("MCP config written to: " + configFile.getAbsolutePath() + "\n");
+
+            // Suggest adding sap-docs if not present
+            if (!config.has("sap-docs")) {
+                appendOutput("TIP: Add SAP documentation search by running:\n");
+                appendOutput("  Add \"sap-docs\": {\"url\": \"https://mcp-sap-docs.marianzeis.de/mcp\"} to config\n");
+            }
         } catch (IOException e) {
             appendOutput("WARNING: Could not write MCP config: " + e.getMessage() + "\n");
         }
