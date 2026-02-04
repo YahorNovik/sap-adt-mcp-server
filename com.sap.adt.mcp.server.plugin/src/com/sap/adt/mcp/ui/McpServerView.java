@@ -171,11 +171,33 @@ public class McpServerView extends ViewPart {
 
     private void registerSapTools() {
         List<McpTool> tools = new ArrayList<>();
+
+        // Core object operations
         tools.add(new SearchObjectTool(adtClient));
         tools.add(new GetSourceTool(adtClient));
         tools.add(new SetSourceTool(adtClient));
+        tools.add(new ObjectStructureTool(adtClient));
+
+        // Lock management
+        tools.add(new LockTool(adtClient));
+        tools.add(new UnlockTool(adtClient));
+
+        // Syntax and activation
         tools.add(new SyntaxCheckTool(adtClient));
         tools.add(new ActivateTool(adtClient));
+        tools.add(new InactiveObjectsTool(adtClient));
+
+        // Object creation
+        tools.add(new CreateObjectTool(adtClient));
+
+        // Testing and quality
+        tools.add(new RunUnitTestTool(adtClient));
+        tools.add(new AtcRunTool(adtClient));
+
+        // Analysis
+        tools.add(new UsageReferencesTool(adtClient));
+        tools.add(new SqlQueryTool(adtClient));
+
         mcpServer.registerTools(tools);
     }
 

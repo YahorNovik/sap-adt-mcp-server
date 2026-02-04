@@ -241,6 +241,381 @@ public final class AdtXmlParser {
         return defaultValue;
     }
 
+    /**
+     * Parse unit test results XML.
+     */
+    public static JsonObject parseUnitTestResults(String xml) {
+        JsonObject result = new JsonObject();
+        result.addProperty("success", true);
+        JsonArray alerts = new JsonArray();
+        result.add("alerts", alerts);
+
+        if (isBlank(xml)) return result;
+
+        try {
+            Document doc = parseDocument(xml);
+
+            // Look for alert nodes
+            NodeList alertNodes = doc.getElementsByTagName("alert");
+            for (int i = 0; i < alertNodes.getLength(); i++) {
+                Element alert = (Element) alertNodes.item(i);
+                JsonObject alertObj = new JsonObject();
+                alertObj.addProperty("kind", attr(alert, "kind", ""));
+                alertObj.addProperty("severity", attr(alert, "severity", ""));
+
+                // Get title and details
+                NodeList titles = alert.getElementsByTagName("title");
+                if (titles.getLength() > 0) {
+                    alertObj.addProperty("title", titles.item(0).getTextContent());
+                }
+
+                NodeList details = alert.getElementsByTagName("detail");
+                if (details.getLength() > 0) {
+                    alertObj.addProperty("detail", details.item(0).getTextContent());
+                }
+
+                String severity = attr(alert, "severity", "").toLowerCase();
+                if (severity.contains("fatal") || severity.contains("critical")) {
+                    result.addProperty("success", false);
+                }
+
+                alerts.add(alertObj);
+            }
+
+            // Look for program nodes with test results
+            NodeList programs = doc.getElementsByTagName("program");
+            JsonArray programResults = new JsonArray();
+            for (int i = 0; i < programs.getLength(); i++) {
+                Element prog = (Element) programs.item(i);
+                JsonObject progObj = new JsonObject();
+                progObj.addProperty("name", attr(prog, "adtcore:name", attr(prog, "name", "")));
+                progObj.addProperty("uri", attr(prog, "adtcore:uri", attr(prog, "uri", "")));
+
+                // Count test classes and methods
+                NodeList testClasses = prog.getElementsByTagName("testClass");
+                JsonArray classes = new JsonArray();
+                for (int j = 0; j < testClasses.getLength(); j++) {
+                    Element tc = (Element) testClasses.item(j);
+                    JsonObject tcObj = new JsonObject();
+                    tcObj.addProperty("name", attr(tc, "adtcore:name", attr(tc, "name", "")));
+
+                    NodeList methods = tc.getElementsByTagName("testMethod");
+                    JsonArray methodArr = new JsonArray();
+                    for (int k = 0; k < methods.getLength(); k++) {
+                        Element m = (Element) methods.item(k);
+                        JsonObject mObj = new JsonObject();
+                        mObj.addProperty("name", attr(m, "adtcore:name", attr(m, "name", "")));
+                        mObj.addProperty("executionTime", attr(m, "executionTime", "0"));
+
+                        // Check for alerts in method
+                        NodeList mAlerts = m.getElementsByTagName("alert");
+                        if (mAlerts.getLength() > 0) {
+                            Element mAlert = (Element) mAlerts.item(0);
+                            String kind = attr(mAlert, "kind", "");
+                            mObj.addProperty("status", kind.isEmpty() ? "passed" : kind);
+                            if (kind.equalsIgnoreCase("failedAssertion") || kind.equalsIgnoreCase("error")) {
+                                result.addProperty("success", false);
+                            }
+                        } else {
+                            mObj.addProperty("status", "passed");
+                        }
+                        methodArr.add(mObj);
+                    }
+                    tcObj.add("methods", methodArr);
+                    classes.add(tcObj);
+                }
+                progObj.add("testClasses", classes);
+                programResults.add(progObj);
+            }
+            result.add("programs", programResults);
+
+        } catch (Exception e) {
+            System.err.println("AdtXmlParser.parseUnitTestResults failed: " + e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * Parse data preview (SQL query) results XML.
+     */
+    public static JsonObject parseDataPreview(String xml) {
+        JsonObject result = new JsonObject();
+        JsonArray columns = new JsonArray();
+        JsonArray rows = new JsonArray();
+        result.add("columns", columns);
+        result.add("rows", rows);
+
+        if (isBlank(xml)) return result;
+
+        try {
+            Document doc = parseDocument(xml);
+
+            // Parse column metadata
+            NodeList metadataNodes = doc.getElementsByTagName("dataPreview:column");
+            if (metadataNodes.getLength() == 0) {
+                metadataNodes = doc.getElementsByTagName("column");
+            }
+
+            for (int i = 0; i < metadataNodes.getLength(); i++) {
+                Element col = (Element) metadataNodes.item(i);
+                JsonObject colObj = new JsonObject();
+                colObj.addProperty("name", attr(col, "dataPreview:name", attr(col, "name", "COL" + i)));
+                colObj.addProperty("type", attr(col, "dataPreview:type", attr(col, "type", "")));
+                colObj.addProperty("description", attr(col, "dataPreview:description", attr(col, "description", "")));
+                columns.add(colObj);
+            }
+
+            // Parse data rows
+            NodeList dataRows = doc.getElementsByTagName("dataPreview:row");
+            if (dataRows.getLength() == 0) {
+                dataRows = doc.getElementsByTagName("row");
+            }
+
+            for (int i = 0; i < dataRows.getLength(); i++) {
+                Element row = (Element) dataRows.item(i);
+                JsonArray rowData = new JsonArray();
+
+                NodeList values = row.getElementsByTagName("dataPreview:value");
+                if (values.getLength() == 0) {
+                    values = row.getElementsByTagName("value");
+                }
+
+                for (int j = 0; j < values.getLength(); j++) {
+                    String val = values.item(j).getTextContent();
+                    rowData.add(val != null ? val : "");
+                }
+                rows.add(rowData);
+            }
+
+            result.addProperty("rowCount", rows.size());
+
+        } catch (Exception e) {
+            System.err.println("AdtXmlParser.parseDataPreview failed: " + e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * Parse ATC worklist results XML.
+     */
+    public static JsonObject parseAtcWorklist(String xml) {
+        JsonObject result = new JsonObject();
+        JsonArray findings = new JsonArray();
+        result.add("findings", findings);
+        result.addProperty("totalFindings", 0);
+
+        if (isBlank(xml)) return result;
+
+        try {
+            Document doc = parseDocument(xml);
+
+            // Parse findings
+            NodeList findingNodes = doc.getElementsByTagName("atcfinding");
+            if (findingNodes.getLength() == 0) {
+                findingNodes = doc.getElementsByTagName("finding");
+            }
+
+            for (int i = 0; i < findingNodes.getLength(); i++) {
+                Element f = (Element) findingNodes.item(i);
+                JsonObject finding = new JsonObject();
+                finding.addProperty("checkId", attr(f, "checkId", ""));
+                finding.addProperty("checkTitle", attr(f, "checkTitle", ""));
+                finding.addProperty("messageId", attr(f, "messageId", ""));
+                finding.addProperty("messageTitle", attr(f, "messageTitle", attr(f, "shortText", "")));
+                finding.addProperty("priority", attr(f, "priority", ""));
+                finding.addProperty("uri", attr(f, "uri", attr(f, "location", "")));
+
+                // Extract line number from URI if present
+                String uri = attr(f, "uri", attr(f, "location", ""));
+                String line = "";
+                int hashIdx = uri.indexOf("#start=");
+                if (hashIdx >= 0) {
+                    String fragment = uri.substring(hashIdx + 7);
+                    String[] parts = fragment.split(",");
+                    if (parts.length >= 1) line = parts[0];
+                }
+                finding.addProperty("line", line);
+
+                findings.add(finding);
+            }
+
+            result.addProperty("totalFindings", findings.size());
+
+            // Also check for object-level info
+            NodeList objects = doc.getElementsByTagName("atcobject");
+            if (objects.getLength() == 0) {
+                objects = doc.getElementsByTagName("object");
+            }
+            JsonArray objectsArr = new JsonArray();
+            for (int i = 0; i < objects.getLength(); i++) {
+                Element obj = (Element) objects.item(i);
+                JsonObject objInfo = new JsonObject();
+                objInfo.addProperty("name", attr(obj, "adtcore:name", attr(obj, "name", "")));
+                objInfo.addProperty("type", attr(obj, "adtcore:type", attr(obj, "type", "")));
+                objInfo.addProperty("uri", attr(obj, "adtcore:uri", attr(obj, "uri", "")));
+                objectsArr.add(objInfo);
+            }
+            if (objectsArr.size() > 0) {
+                result.add("objects", objectsArr);
+            }
+
+        } catch (Exception e) {
+            System.err.println("AdtXmlParser.parseAtcWorklist failed: " + e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * Parse inactive objects list XML.
+     */
+    public static JsonObject parseInactiveObjects(String xml) {
+        JsonObject result = new JsonObject();
+        JsonArray objects = new JsonArray();
+        result.add("inactiveObjects", objects);
+
+        if (isBlank(xml)) return result;
+
+        try {
+            Document doc = parseDocument(xml);
+
+            // Look for entry or inactiveObject elements
+            NodeList entries = doc.getElementsByTagName("entry");
+            if (entries.getLength() == 0) {
+                entries = doc.getElementsByTagName("inactiveObject");
+            }
+            if (entries.getLength() == 0) {
+                entries = doc.getElementsByTagNameNS(NS_ADT_CORE, "objectReference");
+            }
+            if (entries.getLength() == 0) {
+                entries = doc.getElementsByTagName("objectReference");
+            }
+
+            for (int i = 0; i < entries.getLength(); i++) {
+                Element entry = (Element) entries.item(i);
+                JsonObject obj = new JsonObject();
+                obj.addProperty("name", attr(entry, "adtcore:name", attr(entry, "name", childText(entry, "title", ""))));
+                obj.addProperty("type", attr(entry, "adtcore:type", attr(entry, "type", "")));
+                obj.addProperty("uri", attr(entry, "adtcore:uri", attr(entry, "uri", childAttr(entry, "link", "href", ""))));
+                obj.addProperty("description", attr(entry, "adtcore:description", attr(entry, "description", childText(entry, "summary", ""))));
+                obj.addProperty("user", attr(entry, "adtcore:responsible", attr(entry, "responsible", "")));
+                objects.add(obj);
+            }
+
+            result.addProperty("count", objects.size());
+
+        } catch (Exception e) {
+            System.err.println("AdtXmlParser.parseInactiveObjects failed: " + e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * Parse object structure metadata XML.
+     */
+    public static JsonObject parseObjectStructure(String xml) {
+        JsonObject result = new JsonObject();
+
+        if (isBlank(xml)) return result;
+
+        try {
+            Document doc = parseDocument(xml);
+            Element root = doc.getDocumentElement();
+
+            // Extract basic info from root
+            result.addProperty("name", attr(root, "adtcore:name", attr(root, "name", "")));
+            result.addProperty("type", attr(root, "adtcore:type", attr(root, "type", "")));
+            result.addProperty("description", attr(root, "adtcore:description", attr(root, "description", "")));
+            result.addProperty("version", attr(root, "adtcore:version", attr(root, "version", "")));
+            result.addProperty("createdBy", attr(root, "adtcore:createdBy", ""));
+            result.addProperty("changedBy", attr(root, "adtcore:changedBy", ""));
+            result.addProperty("masterLanguage", attr(root, "adtcore:masterLanguage", ""));
+
+            // Package reference
+            NodeList pkgRefs = doc.getElementsByTagName("packageRef");
+            if (pkgRefs.getLength() == 0) {
+                pkgRefs = doc.getElementsByTagNameNS(NS_ADT_CORE, "packageRef");
+            }
+            if (pkgRefs.getLength() > 0) {
+                Element pkg = (Element) pkgRefs.item(0);
+                result.addProperty("packageName", attr(pkg, "adtcore:name", attr(pkg, "name", "")));
+            }
+
+            // For classes - get includes (definitions, implementations, etc.)
+            JsonArray includes = new JsonArray();
+            NodeList includeNodes = doc.getElementsByTagName("include");
+            for (int i = 0; i < includeNodes.getLength(); i++) {
+                Element inc = (Element) includeNodes.item(i);
+                JsonObject incObj = new JsonObject();
+                incObj.addProperty("name", attr(inc, "adtcore:name", attr(inc, "name", "")));
+                incObj.addProperty("type", attr(inc, "adtcore:type", attr(inc, "type", "")));
+                incObj.addProperty("includeType", attr(inc, "includeType", attr(inc, "class:includeType", "")));
+                String uri = attr(inc, "adtcore:uri", attr(inc, "uri", ""));
+                incObj.addProperty("uri", uri);
+
+                // Source URI for accessing the code
+                NodeList links = inc.getElementsByTagName("link");
+                for (int j = 0; j < links.getLength(); j++) {
+                    Element link = (Element) links.item(j);
+                    String rel = attr(link, "rel", "");
+                    if (rel.contains("source") || rel.contains("main")) {
+                        incObj.addProperty("sourceUri", attr(link, "href", ""));
+                        break;
+                    }
+                }
+
+                includes.add(incObj);
+            }
+            if (includes.size() > 0) {
+                result.add("includes", includes);
+            }
+
+            // For function groups - get function modules
+            JsonArray functions = new JsonArray();
+            NodeList funcNodes = doc.getElementsByTagName("fmodule");
+            if (funcNodes.getLength() == 0) {
+                funcNodes = doc.getElementsByTagName("functionModule");
+            }
+            for (int i = 0; i < funcNodes.getLength(); i++) {
+                Element func = (Element) funcNodes.item(i);
+                JsonObject funcObj = new JsonObject();
+                funcObj.addProperty("name", attr(func, "adtcore:name", attr(func, "name", "")));
+                funcObj.addProperty("description", attr(func, "adtcore:description", attr(func, "description", "")));
+                funcObj.addProperty("uri", attr(func, "adtcore:uri", attr(func, "uri", "")));
+                functions.add(funcObj);
+            }
+            if (functions.size() > 0) {
+                result.add("functionModules", functions);
+            }
+
+            // Links for navigation
+            JsonArray links = new JsonArray();
+            NodeList linkNodes = doc.getElementsByTagName("link");
+            if (linkNodes.getLength() == 0) {
+                linkNodes = doc.getElementsByTagNameNS(NS_ATOM, "link");
+            }
+            for (int i = 0; i < linkNodes.getLength(); i++) {
+                Element link = (Element) linkNodes.item(i);
+                JsonObject linkObj = new JsonObject();
+                linkObj.addProperty("rel", attr(link, "rel", ""));
+                linkObj.addProperty("href", attr(link, "href", ""));
+                linkObj.addProperty("type", attr(link, "type", ""));
+                links.add(linkObj);
+            }
+            if (links.size() > 0) {
+                result.add("links", links);
+            }
+
+        } catch (Exception e) {
+            System.err.println("AdtXmlParser.parseObjectStructure failed: " + e.getMessage());
+        }
+
+        return result;
+    }
+
     private static boolean isBlank(String s) {
         return s == null || s.trim().isEmpty();
     }
