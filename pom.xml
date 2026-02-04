@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.sap.adt.mcp</groupId>
+    <artifactId>com.sap.adt.mcp.server.parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>SAP ADT MCP Server - Parent</name>
+    <description>MCP Server for SAP ADT - Enables Claude Code to interact with SAP systems</description>
+
+    <properties>
+        <tycho.version>4.0.4</tycho.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+    </properties>
+
+    <modules>
+        <module>com.sap.adt.mcp.server.target</module>
+        <module>com.sap.adt.mcp.server.plugin</module>
+        <module>com.sap.adt.mcp.server.feature</module>
+        <module>com.sap.adt.mcp.server.site</module>
+    </modules>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-maven-plugin</artifactId>
+                <version>${tycho.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>target-platform-configuration</artifactId>
+                <version>${tycho.version}</version>
+                <configuration>
+                    <target>
+                        <file>../com.sap.adt.mcp.server.target/sap-adt-mcp.target</file>
+                    </target>
+                    <environments>
+                        <environment>
+                            <os>win32</os>
+                            <ws>win32</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>linux</os>
+                            <ws>gtk</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>macosx</os>
+                            <ws>cocoa</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>macosx</os>
+                            <ws>cocoa</ws>
+                            <arch>aarch64</arch>
+                        </environment>
+                    </environments>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

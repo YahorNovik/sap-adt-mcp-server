@@ -1,0 +1,17 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: SAP ADT MCP Server
+Bundle-SymbolicName: com.sap.adt.mcp.server.plugin;singleton:=true
+Bundle-Version: 1.0.0.qualifier
+Bundle-Activator: com.sap.adt.mcp.Activator
+Bundle-Vendor: SAP ADT MCP
+Require-Bundle: org.eclipse.ui,
+ org.eclipse.core.runtime
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Automatic-Module-Name: com.sap.adt.mcp.server.plugin
+Bundle-ActivationPolicy: lazy
+Bundle-ClassPath: .,
+ lib/gson-2.11.0.jar
+Export-Package: com.sap.adt.mcp,
+ com.sap.adt.mcp.server,
+ com.sap.adt.mcp.tools

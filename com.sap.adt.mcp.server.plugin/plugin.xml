@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <!-- MCP Server View -->
+   <extension point="org.eclipse.ui.views">
+      <category
+            id="com.sap.adt.mcp.category"
+            name="SAP ADT MCP">
+      </category>
+      <view
+            id="com.sap.adt.mcp.server.view"
+            name="Claude Code Terminal"
+            category="com.sap.adt.mcp.category"
+            class="com.sap.adt.mcp.ui.McpServerView"
+            icon="icons/claude.png"
+            restorable="true">
+      </view>
+   </extension>
+
+   <!-- Perspective Extension - Add to ABAP perspective -->
+   <extension point="org.eclipse.ui.perspectiveExtensions">
+      <perspectiveExtension targetID="com.sap.adt.ui.AbapPerspective">
+         <viewShortcut id="com.sap.adt.mcp.server.view"/>
+      </perspectiveExtension>
+   </extension>
+
+   <!-- Preferences -->
+   <extension point="org.eclipse.core.runtime.preferences">
+      <initializer class="com.sap.adt.mcp.preferences.PreferenceInitializer"/>
+   </extension>
+
+   <extension point="org.eclipse.ui.preferencePages">
+      <page
+            id="com.sap.adt.mcp.preferences"
+            name="SAP ADT MCP Server"
+            class="com.sap.adt.mcp.preferences.McpPreferencePage">
+      </page>
+   </extension>
+</plugin>

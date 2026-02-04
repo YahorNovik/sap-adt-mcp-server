@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+      id="com.sap.adt.mcp.server.feature"
+      label="SAP ADT MCP Server"
+      version="1.0.0.qualifier"
+      provider-name="SAP ADT MCP">
+
+   <description>
+      MCP Server for SAP ADT that enables Claude Code CLI to interact with SAP systems.
+
+      Features:
+      - Runs MCP server locally in Eclipse
+      - Exposes SAP ADT tools via MCP protocol
+      - Integrates with Claude Code CLI
+   </description>
+
+   <copyright>
+      Copyright (c) 2024 SAP ADT MCP
+   </copyright>
+
+   <license url="http://www.apache.org/licenses/LICENSE-2.0">
+      Apache License, Version 2.0
+   </license>
+
+   <plugin
+         id="com.sap.adt.mcp.server.plugin"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+</feature>
