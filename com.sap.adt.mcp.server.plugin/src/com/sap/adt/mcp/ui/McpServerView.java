@@ -5,7 +5,11 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.eclipse.jface.dialogs.Dialog;
+import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.events.SelectionAdapter;
@@ -14,11 +18,16 @@ import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.part.ViewPart;
 
+import com.sap.adt.mcp.sap.AdtRestClient;
 import com.sap.adt.mcp.server.McpServer;
+import com.sap.adt.mcp.tools.*;
 
 /**
  * Eclipse view that manages the MCP Server and provides a terminal
@@ -31,13 +40,22 @@ public class McpServerView extends ViewPart {
     private static final int DEFAULT_PORT = 3000;
 
     private McpServer mcpServer;
+    private AdtRestClient adtClient;
     private Process claudeProcess;
     private Thread outputThread;
 
     private Label statusLabel;
+    private Button connectButton;
     private Button startButton;
     private Button launchClaudeButton;
     private StyledText outputText;
+
+    // Connection details
+    private String sapUrl;
+    private String sapUser;
+    private String sapPassword;
+    private String sapClient;
+    private String sapLanguage = "EN";
 
     @Override
     public void createPartControl(Composite parent) {
@@ -45,15 +63,25 @@ public class McpServerView extends ViewPart {
 
         // Status bar
         Composite statusBar = new Composite(parent, SWT.NONE);
-        statusBar.setLayout(new GridLayout(4, false));
+        statusBar.setLayout(new GridLayout(5, false));
         statusBar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
         statusLabel = new Label(statusBar, SWT.NONE);
-        statusLabel.setText("MCP Server: Stopped");
+        statusLabel.setText("SAP: Not Connected | MCP: Stopped");
         statusLabel.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+        connectButton = new Button(statusBar, SWT.PUSH);
+        connectButton.setText("Connect SAP");
+        connectButton.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                showConnectionDialog();
+            }
+        });
 
         startButton = new Button(statusBar, SWT.PUSH);
         startButton.setText("Start Server");
+        startButton.setEnabled(false);
         startButton.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
@@ -89,29 +117,72 @@ public class McpServerView extends ViewPart {
         appendOutput("SAP ADT MCP Server\n");
         appendOutput("==================\n\n");
         appendOutput("This plugin exposes SAP ADT tools via MCP protocol for Claude Code.\n\n");
-        appendOutput("1. Click 'Start Server' to start the MCP server\n");
-        appendOutput("2. Click 'Launch Claude Code' to open Claude in terminal\n");
+        appendOutput("1. Click 'Connect SAP' to enter connection details\n");
+        appendOutput("2. Click 'Start Server' to start the MCP server\n");
+        appendOutput("3. Click 'Launch Claude Code' to open Claude in terminal\n");
         appendOutput("   Or run manually: claude --mcp-server http://localhost:" + DEFAULT_PORT + "/mcp\n\n");
 
         // Initialize MCP server
         mcpServer = new McpServer(DEFAULT_PORT);
         mcpServer.setStatusListener((running, message) -> {
             Display.getDefault().asyncExec(() -> {
-                statusLabel.setText("MCP Server: " + (running ? "Running" : "Stopped"));
+                updateStatusLabel();
                 startButton.setText(running ? "Stop Server" : "Start Server");
                 launchClaudeButton.setEnabled(running);
                 appendOutput(message + "\n");
             });
         });
-
-        // Register tools (placeholder - will be populated from SAP connection)
-        registerDefaultTools();
     }
 
-    private void registerDefaultTools() {
-        // TODO: Register actual SAP tools when connected to a system
-        // For now, just log that we'd register tools here
-        appendOutput("Tools will be registered when connected to SAP system.\n");
+    private void showConnectionDialog() {
+        ConnectionDialog dialog = new ConnectionDialog(getSite().getShell());
+        if (dialog.open() == Dialog.OK) {
+            sapUrl = dialog.getUrl();
+            sapUser = dialog.getUser();
+            sapPassword = dialog.getPassword();
+            sapClient = dialog.getSapClient();
+            sapLanguage = dialog.getLanguage();
+
+            connectToSap();
+        }
+    }
+
+    private void connectToSap() {
+        appendOutput("Connecting to SAP at " + sapUrl + "...\n");
+
+        try {
+            adtClient = new AdtRestClient(sapUrl, sapUser, sapPassword, sapClient, sapLanguage, true);
+            adtClient.login();
+
+            appendOutput("Successfully connected to SAP!\n");
+            appendOutput("Registering SAP tools...\n");
+
+            registerSapTools();
+
+            appendOutput("Registered " + mcpServer.getToolCount() + " tools.\n\n");
+            startButton.setEnabled(true);
+            updateStatusLabel();
+
+        } catch (Exception e) {
+            appendOutput("ERROR: Failed to connect to SAP: " + e.getMessage() + "\n");
+            adtClient = null;
+        }
+    }
+
+    private void registerSapTools() {
+        List<McpTool> tools = new ArrayList<>();
+        tools.add(new SearchObjectTool(adtClient));
+        tools.add(new GetSourceTool(adtClient));
+        tools.add(new SetSourceTool(adtClient));
+        tools.add(new SyntaxCheckTool(adtClient));
+        tools.add(new ActivateTool(adtClient));
+        mcpServer.registerTools(tools);
+    }
+
+    private void updateStatusLabel() {
+        String sapStatus = adtClient != null && adtClient.isLoggedIn() ? "Connected" : "Not Connected";
+        String mcpStatus = mcpServer != null && mcpServer.isRunning() ? "Running" : "Stopped";
+        statusLabel.setText("SAP: " + sapStatus + " | MCP: " + mcpStatus);
     }
 
     private void toggleServer() {
@@ -127,10 +198,6 @@ public class McpServerView extends ViewPart {
         }
     }
 
-    /**
-     * Writes the MCP server config to ~/.claude/mcp_servers.json
-     * so Claude Code auto-discovers our server.
-     */
     private void writeMcpConfig() {
         try {
             String homeDir = System.getProperty("user.home");
@@ -169,7 +236,6 @@ public class McpServerView extends ViewPart {
 
             appendOutput("\n--- Claude Code Started ---\n\n");
 
-            // Read output in background thread
             outputThread = new Thread(() -> {
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(claudeProcess.getInputStream()))) {
@@ -216,6 +282,90 @@ public class McpServerView extends ViewPart {
         if (claudeProcess != null && claudeProcess.isAlive()) {
             claudeProcess.destroy();
         }
+        if (adtClient != null) {
+            adtClient.logout();
+        }
         super.dispose();
+    }
+
+    /**
+     * Connection dialog for SAP system details.
+     */
+    private class ConnectionDialog extends Dialog {
+        private Text urlText;
+        private Text userText;
+        private Text passwordText;
+        private Text clientText;
+        private Text languageText;
+
+        private String url;
+        private String user;
+        private String password;
+        private String client;
+        private String language;
+
+        protected ConnectionDialog(Shell parentShell) {
+            super(parentShell);
+        }
+
+        @Override
+        protected void configureShell(Shell shell) {
+            super.configureShell(shell);
+            shell.setText("Connect to SAP System");
+        }
+
+        @Override
+        protected Control createDialogArea(Composite parent) {
+            Composite container = (Composite) super.createDialogArea(parent);
+            container.setLayout(new GridLayout(2, false));
+
+            new Label(container, SWT.NONE).setText("SAP URL:");
+            urlText = new Text(container, SWT.BORDER);
+            urlText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+            urlText.setText(sapUrl != null ? sapUrl : "https://host:44300");
+
+            new Label(container, SWT.NONE).setText("User:");
+            userText = new Text(container, SWT.BORDER);
+            userText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+            userText.setText(sapUser != null ? sapUser : "");
+
+            new Label(container, SWT.NONE).setText("Password:");
+            passwordText = new Text(container, SWT.BORDER | SWT.PASSWORD);
+            passwordText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+            new Label(container, SWT.NONE).setText("Client:");
+            clientText = new Text(container, SWT.BORDER);
+            clientText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+            clientText.setText(sapClient != null ? sapClient : "100");
+
+            new Label(container, SWT.NONE).setText("Language:");
+            languageText = new Text(container, SWT.BORDER);
+            languageText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+            languageText.setText(sapLanguage != null ? sapLanguage : "EN");
+
+            return container;
+        }
+
+        @Override
+        protected void createButtonsForButtonBar(Composite parent) {
+            createButton(parent, IDialogConstants.OK_ID, "Connect", true);
+            createButton(parent, IDialogConstants.CANCEL_ID, IDialogConstants.CANCEL_LABEL, false);
+        }
+
+        @Override
+        protected void okPressed() {
+            url = urlText.getText().trim();
+            user = userText.getText().trim();
+            password = passwordText.getText();
+            client = clientText.getText().trim();
+            language = languageText.getText().trim();
+            super.okPressed();
+        }
+
+        public String getUrl() { return url; }
+        public String getUser() { return user; }
+        public String getPassword() { return password; }
+        public String getSapClient() { return client; }
+        public String getLanguage() { return language; }
     }
 }

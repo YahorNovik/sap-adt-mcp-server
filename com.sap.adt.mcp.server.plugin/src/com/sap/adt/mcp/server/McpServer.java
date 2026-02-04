@@ -94,6 +94,10 @@ public class McpServer {
         return port;
     }
 
+    public int getToolCount() {
+        return tools.size();
+    }
+
     private void notifyStatus(boolean running, String message) {
         if (statusListener != null) {
             statusListener.onStatusChanged(running, message);
