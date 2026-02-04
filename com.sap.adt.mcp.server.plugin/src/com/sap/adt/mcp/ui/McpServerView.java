@@ -269,40 +269,83 @@ public class McpServerView extends ViewPart {
     }
 
     private void launchClaudeCode() {
-        if (claudeProcess != null && claudeProcess.isAlive()) {
-            appendOutput("Claude Code is already running.\n");
-            return;
-        }
-
         try {
-            ProcessBuilder pb = new ProcessBuilder("claude");
-            pb.redirectErrorStream(true);
-            claudeProcess = pb.start();
+            // Try to open Eclipse's built-in terminal view
+            org.eclipse.ui.IWorkbenchPage page = getSite().getPage();
 
-            appendOutput("\n--- Claude Code Started ---\n\n");
+            // Try TM Terminal first (if available)
+            try {
+                org.eclipse.ui.IViewPart terminalView = page.showView(
+                        "org.eclipse.tm.terminal.view.ui.TerminalsView",
+                        null,
+                        org.eclipse.ui.IWorkbenchPage.VIEW_ACTIVATE);
 
-            outputThread = new Thread(() -> {
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(claudeProcess.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        final String output = line;
-                        Display.getDefault().asyncExec(() -> appendOutput(output + "\n"));
-                    }
-                } catch (IOException e) {
-                    // Process ended
+                if (terminalView != null) {
+                    appendOutput("Opened Terminal view. Please run 'claude' command.\n");
+                    appendOutput("TIP: Copy and paste: claude\n");
+
+                    // Copy "claude" to clipboard for easy pasting
+                    org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(Display.getDefault());
+                    org.eclipse.swt.dnd.TextTransfer textTransfer = org.eclipse.swt.dnd.TextTransfer.getInstance();
+                    clipboard.setContents(new Object[]{"claude"}, new org.eclipse.swt.dnd.Transfer[]{textTransfer});
+                    clipboard.dispose();
+                    appendOutput("'claude' copied to clipboard - just paste (Cmd+V / Ctrl+V) in terminal.\n");
+                    return;
                 }
-                Display.getDefault().asyncExec(() ->
-                        appendOutput("\n--- Claude Code Exited ---\n"));
-            });
-            outputThread.setDaemon(true);
-            outputThread.start();
+            } catch (org.eclipse.ui.PartInitException e) {
+                // TM Terminal not available, try fallback
+            }
 
-        } catch (IOException e) {
-            appendOutput("ERROR: Failed to launch Claude Code: " + e.getMessage() + "\n");
-            appendOutput("Make sure 'claude' CLI is installed and in your PATH.\n");
-            appendOutput("Install: npm install -g @anthropic-ai/claude-code\n");
+            // Fallback: Open external terminal
+            appendOutput("Eclipse Terminal not available. Opening external terminal...\n");
+            openExternalTerminal();
+
+        } catch (Exception e) {
+            appendOutput("ERROR: Failed to launch terminal: " + e.getMessage() + "\n");
+            appendOutput("You can run Claude Code manually: claude\n");
         }
+    }
+
+    private void openExternalTerminal() throws IOException {
+        String os = System.getProperty("os.name").toLowerCase();
+        ProcessBuilder pb;
+
+        if (os.contains("mac")) {
+            String script = "tell application \"Terminal\"\n"
+                    + "    activate\n"
+                    + "    do script \"claude\"\n"
+                    + "end tell";
+            pb = new ProcessBuilder("osascript", "-e", script);
+        } else if (os.contains("win")) {
+            pb = new ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "claude");
+        } else {
+            // Linux: Try common terminals
+            String[] terminals = {"gnome-terminal", "konsole", "xfce4-terminal", "xterm"};
+            String terminal = null;
+            for (String t : terminals) {
+                try {
+                    Process p = Runtime.getRuntime().exec(new String[]{"which", t});
+                    if (p.waitFor() == 0) {
+                        terminal = t;
+                        break;
+                    }
+                } catch (Exception e) {
+                    // Continue trying
+                }
+            }
+            if (terminal != null) {
+                if (terminal.equals("gnome-terminal")) {
+                    pb = new ProcessBuilder(terminal, "--", "claude");
+                } else {
+                    pb = new ProcessBuilder(terminal, "-e", "claude");
+                }
+            } else {
+                throw new IOException("No terminal emulator found");
+            }
+        }
+
+        pb.start();
+        appendOutput("Launched Claude Code in external terminal.\n");
     }
 
     private void appendOutput(String text) {
