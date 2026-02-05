@@ -272,10 +272,15 @@ public class McpServerView extends ViewPart {
 
     private void launchClaudeCode() {
         try {
+            String os = System.getProperty("os.name").toLowerCase();
+            boolean isWindows = os.contains("win");
+
+            // Determine the command to copy to clipboard
+            String clipboardCmd = isWindows ? "wsl -- claude" : "claude";
+
             // Try to open Eclipse's built-in terminal view
             org.eclipse.ui.IWorkbenchPage page = getSite().getPage();
 
-            // Try TM Terminal first (if available)
             try {
                 org.eclipse.ui.IViewPart terminalView = page.showView(
                         "org.eclipse.tm.terminal.view.ui.TerminalsView",
@@ -283,15 +288,17 @@ public class McpServerView extends ViewPart {
                         org.eclipse.ui.IWorkbenchPage.VIEW_ACTIVATE);
 
                 if (terminalView != null) {
-                    appendOutput("Opened Terminal view. Please run 'claude' command.\n");
-                    appendOutput("TIP: Copy and paste: claude\n");
-
-                    // Copy "claude" to clipboard for easy pasting
+                    // Copy command to clipboard for easy pasting
                     org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(Display.getDefault());
                     org.eclipse.swt.dnd.TextTransfer textTransfer = org.eclipse.swt.dnd.TextTransfer.getInstance();
-                    clipboard.setContents(new Object[]{"claude"}, new org.eclipse.swt.dnd.Transfer[]{textTransfer});
+                    clipboard.setContents(new Object[]{clipboardCmd}, new org.eclipse.swt.dnd.Transfer[]{textTransfer});
                     clipboard.dispose();
-                    appendOutput("'claude' copied to clipboard - just paste (Cmd+V / Ctrl+V) in terminal.\n");
+
+                    appendOutput("Opened Terminal view.\n");
+                    appendOutput("Paste '" + clipboardCmd + "' (already in clipboard) to start Claude Code.\n");
+                    if (isWindows) {
+                        appendOutput("WSL is used because Claude Code requires a Unix environment on Windows.\n");
+                    }
                     return;
                 }
             } catch (org.eclipse.ui.PartInitException e) {
@@ -308,6 +315,15 @@ public class McpServerView extends ViewPart {
         }
     }
 
+    private boolean isWslAvailable() {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"wsl.exe", "--status"});
+            return p.waitFor() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void openExternalTerminal() throws IOException {
         String os = System.getProperty("os.name").toLowerCase();
         ProcessBuilder pb;
@@ -319,20 +335,31 @@ public class McpServerView extends ViewPart {
                     + "end tell";
             pb = new ProcessBuilder("osascript", "-e", script);
         } else if (os.contains("win")) {
-            pb = new ProcessBuilder("cmd", "/c", "start", "cmd", "/k", "claude");
+            if (isWslAvailable()) {
+                // Try Windows Terminal with WSL first (modern Windows)
+                if (isCommandAvailable("wt.exe")) {
+                    pb = new ProcessBuilder("wt.exe", "-p", "Ubuntu", "--", "wsl", "--", "claude");
+                    appendOutput("Opening Windows Terminal with WSL...\n");
+                } else {
+                    // Fall back to wsl.exe directly in a new cmd window
+                    pb = new ProcessBuilder("cmd", "/c", "start", "wsl.exe", "--", "claude");
+                    appendOutput("Opening WSL terminal...\n");
+                }
+            } else {
+                appendOutput("WARNING: WSL not found. Claude Code requires a Unix environment on Windows.\n");
+                appendOutput("Install WSL: wsl --install\n");
+                appendOutput("Then install Claude Code in WSL: npm install -g @anthropic-ai/claude-code\n");
+                pb = new ProcessBuilder("cmd", "/c", "start", "cmd", "/k",
+                        "echo Claude Code requires WSL on Windows. Run: wsl --install");
+            }
         } else {
             // Linux: Try common terminals
             String[] terminals = {"gnome-terminal", "konsole", "xfce4-terminal", "xterm"};
             String terminal = null;
             for (String t : terminals) {
-                try {
-                    Process p = Runtime.getRuntime().exec(new String[]{"which", t});
-                    if (p.waitFor() == 0) {
-                        terminal = t;
-                        break;
-                    }
-                } catch (Exception e) {
-                    // Continue trying
+                if (isCommandAvailable(t)) {
+                    terminal = t;
+                    break;
                 }
             }
             if (terminal != null) {
@@ -348,6 +375,21 @@ public class McpServerView extends ViewPart {
 
         pb.start();
         appendOutput("Launched Claude Code in external terminal.\n");
+    }
+
+    private boolean isCommandAvailable(String command) {
+        try {
+            String os = System.getProperty("os.name").toLowerCase();
+            Process p;
+            if (os.contains("win")) {
+                p = Runtime.getRuntime().exec(new String[]{"where", command});
+            } else {
+                p = Runtime.getRuntime().exec(new String[]{"which", command});
+            }
+            return p.waitFor() == 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void appendOutput(String text) {
