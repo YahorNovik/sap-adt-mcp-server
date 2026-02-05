@@ -40,7 +40,7 @@ The plugin logs into SAP via ADT REST APIs and registers all 15 tools. You'll se
 
 ### 4. Start the MCP Server
 
-Click **Start Server**. This starts a local HTTP server on port 3000 that speaks the MCP protocol. The plugin automatically writes the MCP configuration to `~/.claude/mcp_servers.json` with both the ADT server and the SAP documentation server ([mcp-sap-docs](https://github.com/marianfoo/mcp-sap-docs)). Any other MCP servers you already have configured are preserved.
+Click **Start Server**. This starts a local HTTP server on port 3000 that speaks the MCP protocol. The plugin automatically writes the MCP configuration to `~/.claude.json` under the `mcpServers` key, adding both the ADT server and the SAP documentation server ([mcp-sap-docs](https://github.com/marianfoo/mcp-sap-docs)). Any existing settings in `~/.claude.json` are preserved.
 
 ### 5. Launch Claude Code
 
@@ -115,15 +115,19 @@ Claude reads the code, makes changes, runs checks, and activates — all through
 
 When you start the MCP server, the plugin automatically configures [mcp-sap-docs](https://github.com/marianfoo/mcp-sap-docs) alongside the ADT server. No manual setup needed.
 
-Your `~/.claude/mcp_servers.json` will contain both:
+Your `~/.claude.json` will contain:
 
 ```json
 {
-  "sap-adt": {
-    "url": "http://localhost:3000/mcp"
-  },
-  "sap-docs": {
-    "url": "https://mcp-sap-docs.marianzeis.de/mcp"
+  "mcpServers": {
+    "sap-adt": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp"
+    },
+    "sap-docs": {
+      "type": "http",
+      "url": "https://mcp-sap-docs.marianzeis.de/mcp"
+    }
   }
 }
 ```

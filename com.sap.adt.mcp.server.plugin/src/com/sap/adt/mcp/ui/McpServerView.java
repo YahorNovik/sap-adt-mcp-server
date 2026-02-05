@@ -226,37 +226,43 @@ public class McpServerView extends ViewPart {
     private void writeMcpConfig() {
         try {
             String homeDir = System.getProperty("user.home");
-            File claudeDir = new File(homeDir, ".claude");
-            if (!claudeDir.exists()) {
-                claudeDir.mkdirs();
-            }
+            File configFile = new File(homeDir, ".claude.json");
 
-            File configFile = new File(claudeDir, "mcp_servers.json");
-
-            // Read existing config or create new one
+            // Read existing ~/.claude.json or create new one
             com.google.gson.JsonObject config = new com.google.gson.JsonObject();
             if (configFile.exists()) {
                 try (java.io.FileReader reader = new java.io.FileReader(configFile)) {
                     config = com.google.gson.JsonParser.parseReader(reader).getAsJsonObject();
-                    appendOutput("Updating existing MCP config...\n");
+                    appendOutput("Updating existing ~/.claude.json...\n");
                 } catch (Exception e) {
-                    // If parsing fails, start fresh
                     config = new com.google.gson.JsonObject();
                 }
             }
 
+            // Get or create mcpServers object
+            com.google.gson.JsonObject mcpServers;
+            if (config.has("mcpServers") && config.get("mcpServers").isJsonObject()) {
+                mcpServers = config.getAsJsonObject("mcpServers");
+            } else {
+                mcpServers = new com.google.gson.JsonObject();
+            }
+
             // Add/update sap-adt entry
             com.google.gson.JsonObject sapAdt = new com.google.gson.JsonObject();
+            sapAdt.addProperty("type", "http");
             sapAdt.addProperty("url", "http://localhost:" + DEFAULT_PORT + "/mcp");
-            config.add("sap-adt", sapAdt);
+            mcpServers.add("sap-adt", sapAdt);
 
             // Add sap-docs (SAP documentation search) if not already present
-            if (!config.has("sap-docs")) {
+            if (!mcpServers.has("sap-docs")) {
                 com.google.gson.JsonObject sapDocs = new com.google.gson.JsonObject();
+                sapDocs.addProperty("type", "http");
                 sapDocs.addProperty("url", "https://mcp-sap-docs.marianzeis.de/mcp");
-                config.add("sap-docs", sapDocs);
+                mcpServers.add("sap-docs", sapDocs);
                 appendOutput("Added SAP documentation MCP server (mcp-sap-docs).\n");
             }
+
+            config.add("mcpServers", mcpServers);
 
             // Write merged config with pretty printing
             com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
