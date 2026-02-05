@@ -260,7 +260,8 @@ public class McpServerView extends ViewPart {
     }
 
     private void writeMcpConfig() {
-        String adtUrl = "http://localhost:" + DEFAULT_PORT + "/mcp";
+        String host = getServerHost();
+        String adtUrl = "http://" + host + ":" + DEFAULT_PORT + "/mcp";
         String docsUrl = "https://mcp-sap-docs.marianzeis.de/mcp";
 
         appendOutput("\n");
@@ -270,6 +271,11 @@ public class McpServerView extends ViewPart {
         appendOutput("\n");
         appendOutput("Then verify with: claude mcp list\n");
         appendOutput("================================================================\n\n");
+
+        if (!host.equals("localhost")) {
+            appendOutput("NOTE: Using IP " + host + " instead of localhost\n");
+            appendOutput("      because Claude Code in WSL cannot reach Windows' localhost.\n\n");
+        }
 
         // Copy commands to clipboard
         String commands = "claude mcp add --transport http --scope user sap-adt " + adtUrl
@@ -283,6 +289,58 @@ public class McpServerView extends ViewPart {
         } catch (Exception e) {
             // Clipboard not available, commands are still shown in output
         }
+    }
+
+    /**
+     * Get the host address for the MCP server URL.
+     * On Windows, detect the host IP accessible from WSL instead of localhost.
+     */
+    private String getServerHost() {
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        if (!isWindows) {
+            return "localhost";
+        }
+
+        // On Windows, find an IP that WSL can reach
+        try {
+            java.util.Enumeration<java.net.NetworkInterface> interfaces =
+                    java.net.NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                java.net.NetworkInterface ni = interfaces.nextElement();
+                if (ni.isLoopback() || !ni.isUp()) continue;
+
+                // Look for the vEthernet (WSL) adapter or any non-loopback IPv4
+                java.util.Enumeration<java.net.InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    java.net.InetAddress addr = addresses.nextElement();
+                    if (addr instanceof java.net.Inet4Address && !addr.isLoopbackAddress()) {
+                        String name = ni.getDisplayName().toLowerCase();
+                        // Prefer WSL vEthernet adapter
+                        if (name.contains("wsl") || name.contains("vethernet")) {
+                            return addr.getHostAddress();
+                        }
+                    }
+                }
+            }
+
+            // Fallback: return first non-loopback IPv4
+            interfaces = java.net.NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                java.net.NetworkInterface ni = interfaces.nextElement();
+                if (ni.isLoopback() || !ni.isUp()) continue;
+                java.util.Enumeration<java.net.InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    java.net.InetAddress addr = addresses.nextElement();
+                    if (addr instanceof java.net.Inet4Address && !addr.isLoopbackAddress()) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Could not detect host IP: " + e.getMessage());
+        }
+
+        return "localhost";
     }
 
     private void launchClaudeCode() {
