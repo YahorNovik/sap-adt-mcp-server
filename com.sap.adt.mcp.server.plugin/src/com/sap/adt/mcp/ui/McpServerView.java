@@ -143,7 +143,43 @@ public class McpServerView extends ViewPart {
             sapClient = dialog.getSapClient();
             sapLanguage = dialog.getLanguage();
 
+            // Save connection details (never password) for next time
+            saveConnectionHistory();
+
             connectToSap();
+        }
+    }
+
+    private void saveConnectionHistory() {
+        try {
+            org.eclipse.jface.preference.IPreferenceStore store =
+                    com.sap.adt.mcp.Activator.getDefault().getPreferenceStore();
+
+            store.setValue(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_LAST_URL, sapUrl);
+            store.setValue(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_LAST_USER, sapUser);
+            store.setValue(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_LAST_CLIENT, sapClient);
+            store.setValue(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_LAST_LANGUAGE, sapLanguage);
+
+            // Add URL to history (keep last 10, semicolon-separated)
+            String history = store.getString(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_URL_HISTORY);
+            java.util.LinkedHashSet<String> urls = new java.util.LinkedHashSet<>();
+            urls.add(sapUrl); // most recent first
+            if (history != null && !history.isEmpty()) {
+                for (String u : history.split(";")) {
+                    if (!u.trim().isEmpty()) urls.add(u.trim());
+                }
+            }
+            // Keep max 10
+            StringBuilder sb = new StringBuilder();
+            int count = 0;
+            for (String u : urls) {
+                if (count++ >= 10) break;
+                if (sb.length() > 0) sb.append(";");
+                sb.append(u);
+            }
+            store.setValue(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_URL_HISTORY, sb.toString());
+        } catch (Exception e) {
+            // Preference store not available, ignore
         }
     }
 
@@ -401,9 +437,10 @@ public class McpServerView extends ViewPart {
 
     /**
      * Connection dialog for SAP system details.
+     * Loads previous connection details from preferences (except password).
      */
     private class ConnectionDialog extends Dialog {
-        private Text urlText;
+        private org.eclipse.swt.widgets.Combo urlCombo;
         private Text userText;
         private Text passwordText;
         private Text clientText;
@@ -430,15 +467,49 @@ public class McpServerView extends ViewPart {
             Composite container = (Composite) super.createDialogArea(parent);
             container.setLayout(new GridLayout(2, false));
 
+            // Load saved values from preferences
+            String savedUrl = "";
+            String savedUser = "";
+            String savedClient = "100";
+            String savedLanguage = "EN";
+            String[] urlHistory = new String[0];
+
+            try {
+                org.eclipse.jface.preference.IPreferenceStore store =
+                        com.sap.adt.mcp.Activator.getDefault().getPreferenceStore();
+                savedUrl = store.getString(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_LAST_URL);
+                savedUser = store.getString(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_LAST_USER);
+                savedClient = store.getString(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_LAST_CLIENT);
+                savedLanguage = store.getString(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_LAST_LANGUAGE);
+                String history = store.getString(com.sap.adt.mcp.preferences.PreferenceInitializer.PREF_URL_HISTORY);
+                if (history != null && !history.isEmpty()) {
+                    urlHistory = history.split(";");
+                }
+            } catch (Exception e) {
+                // Preferences not available
+            }
+
+            // Use saved values, fall back to current session values, then defaults
+            String defaultUrl = !savedUrl.isEmpty() ? savedUrl : (sapUrl != null ? sapUrl : "");
+            String defaultUser = !savedUser.isEmpty() ? savedUser : (sapUser != null ? sapUser : "");
+            String defaultClient = !savedClient.isEmpty() ? savedClient : (sapClient != null ? sapClient : "100");
+            String defaultLanguage = !savedLanguage.isEmpty() ? savedLanguage : (sapLanguage != null ? sapLanguage : "EN");
+
             new Label(container, SWT.NONE).setText("SAP URL:");
-            urlText = new Text(container, SWT.BORDER);
-            urlText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-            urlText.setText(sapUrl != null ? sapUrl : "https://host:44300");
+            urlCombo = new org.eclipse.swt.widgets.Combo(container, SWT.BORDER);
+            urlCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+            // Populate URL dropdown with history
+            for (String histUrl : urlHistory) {
+                if (!histUrl.trim().isEmpty()) {
+                    urlCombo.add(histUrl.trim());
+                }
+            }
+            urlCombo.setText(defaultUrl);
 
             new Label(container, SWT.NONE).setText("User:");
             userText = new Text(container, SWT.BORDER);
             userText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-            userText.setText(sapUser != null ? sapUser : "");
+            userText.setText(defaultUser);
 
             new Label(container, SWT.NONE).setText("Password:");
             passwordText = new Text(container, SWT.BORDER | SWT.PASSWORD);
@@ -447,12 +518,15 @@ public class McpServerView extends ViewPart {
             new Label(container, SWT.NONE).setText("Client:");
             clientText = new Text(container, SWT.BORDER);
             clientText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-            clientText.setText(sapClient != null ? sapClient : "100");
+            clientText.setText(defaultClient);
 
             new Label(container, SWT.NONE).setText("Language:");
             languageText = new Text(container, SWT.BORDER);
             languageText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-            languageText.setText(sapLanguage != null ? sapLanguage : "EN");
+            languageText.setText(defaultLanguage);
+
+            // Focus password field since other fields are pre-filled
+            container.getDisplay().asyncExec(() -> passwordText.setFocus());
 
             return container;
         }
@@ -465,7 +539,7 @@ public class McpServerView extends ViewPart {
 
         @Override
         protected void okPressed() {
-            url = urlText.getText().trim();
+            url = urlCombo.getText().trim();
             user = userText.getText().trim();
             password = passwordText.getText();
             client = clientText.getText().trim();
