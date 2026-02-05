@@ -224,22 +224,55 @@ public class McpServerView extends ViewPart {
     }
 
     private void writeMcpConfig() {
+        // Use 'claude mcp add' CLI command — the official way to register MCP servers.
+        // This writes to ~/.claude.json under the mcpServers key.
+        addMcpServer("sap-adt", "http://localhost:" + DEFAULT_PORT + "/mcp");
+        addMcpServer("sap-docs", "https://mcp-sap-docs.marianzeis.de/mcp");
+    }
+
+    private void addMcpServer(String name, String url) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "claude", "mcp", "add",
+                    "--transport", "http",
+                    "--scope", "user",
+                    name, url);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+
+            String output;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                output = reader.lines().reduce("", (a, b) -> a + b + "\n");
+            }
+
+            int exitCode = p.waitFor();
+            if (exitCode == 0) {
+                appendOutput("Registered MCP server '" + name + "' -> " + url + "\n");
+            } else {
+                appendOutput("WARNING: Could not register '" + name + "': " + output.trim() + "\n");
+                // Fallback: write to ~/.claude.json directly
+                addMcpServerFallback(name, url);
+            }
+        } catch (Exception e) {
+            appendOutput("WARNING: 'claude' CLI not found, writing config directly.\n");
+            addMcpServerFallback(name, url);
+        }
+    }
+
+    private void addMcpServerFallback(String name, String url) {
         try {
             String homeDir = System.getProperty("user.home");
             File configFile = new File(homeDir, ".claude.json");
 
-            // Read existing ~/.claude.json or create new one
             com.google.gson.JsonObject config = new com.google.gson.JsonObject();
             if (configFile.exists()) {
                 try (java.io.FileReader reader = new java.io.FileReader(configFile)) {
                     config = com.google.gson.JsonParser.parseReader(reader).getAsJsonObject();
-                    appendOutput("Updating existing ~/.claude.json...\n");
                 } catch (Exception e) {
                     config = new com.google.gson.JsonObject();
                 }
             }
 
-            // Get or create mcpServers object
             com.google.gson.JsonObject mcpServers;
             if (config.has("mcpServers") && config.get("mcpServers").isJsonObject()) {
                 mcpServers = config.getAsJsonObject("mcpServers");
@@ -247,32 +280,20 @@ public class McpServerView extends ViewPart {
                 mcpServers = new com.google.gson.JsonObject();
             }
 
-            // Add/update sap-adt entry
-            com.google.gson.JsonObject sapAdt = new com.google.gson.JsonObject();
-            sapAdt.addProperty("type", "http");
-            sapAdt.addProperty("url", "http://localhost:" + DEFAULT_PORT + "/mcp");
-            mcpServers.add("sap-adt", sapAdt);
-
-            // Add sap-docs (SAP documentation search) if not already present
-            if (!mcpServers.has("sap-docs")) {
-                com.google.gson.JsonObject sapDocs = new com.google.gson.JsonObject();
-                sapDocs.addProperty("type", "http");
-                sapDocs.addProperty("url", "https://mcp-sap-docs.marianzeis.de/mcp");
-                mcpServers.add("sap-docs", sapDocs);
-                appendOutput("Added SAP documentation MCP server (mcp-sap-docs).\n");
-            }
-
+            com.google.gson.JsonObject server = new com.google.gson.JsonObject();
+            server.addProperty("type", "http");
+            server.addProperty("url", url);
+            mcpServers.add(name, server);
             config.add("mcpServers", mcpServers);
 
-            // Write merged config with pretty printing
             com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
             try (FileWriter writer = new FileWriter(configFile)) {
                 writer.write(gson.toJson(config));
             }
 
-            appendOutput("MCP config written to: " + configFile.getAbsolutePath() + "\n");
+            appendOutput("Wrote '" + name + "' to " + configFile.getAbsolutePath() + "\n");
         } catch (IOException e) {
-            appendOutput("WARNING: Could not write MCP config: " + e.getMessage() + "\n");
+            appendOutput("ERROR: Could not write MCP config: " + e.getMessage() + "\n");
         }
     }
 
