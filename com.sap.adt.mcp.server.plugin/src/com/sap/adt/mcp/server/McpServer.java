@@ -7,8 +7,10 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -21,10 +23,14 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 /**
- * MCP (Model Context Protocol) Server that exposes SAP ADT tools to Claude Code.
+ * MCP (Model Context Protocol) Server implementing Streamable HTTP transport.
  *
- * <p>Implements the MCP JSON-RPC protocol over HTTP, allowing Claude Code
- * to discover and call SAP tools.</p>
+ * <p>Supports the 2024-11-05 MCP protocol over HTTP:</p>
+ * <ul>
+ *   <li>POST /mcp — JSON-RPC requests (initialize, tools/list, tools/call)</li>
+ *   <li>GET /mcp — SSE stream for server-to-client notifications</li>
+ *   <li>DELETE /mcp — Close session</li>
+ * </ul>
  */
 public class McpServer {
 
@@ -34,7 +40,7 @@ public class McpServer {
     private HttpServer server;
     private final int port;
     private final List<McpTool> tools = new ArrayList<>();
-    private final AtomicInteger requestIdCounter = new AtomicInteger(0);
+    private final Map<String, Boolean> sessions = new ConcurrentHashMap<>();
 
     private volatile boolean running = false;
     private ServerStatusListener statusListener;
@@ -81,6 +87,7 @@ public class McpServer {
         }
 
         server.stop(0);
+        sessions.clear();
         running = false;
         notifyStatus(false, "MCP Server stopped");
         System.out.println("MCP Server stopped");
@@ -105,41 +112,72 @@ public class McpServer {
     }
 
     /**
-     * Main MCP protocol handler.
+     * Main MCP Streamable HTTP handler.
      */
     private class McpHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            // Enable CORS
+            // CORS headers
             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+            exchange.getResponseHeaders().add("Access-Control-Allow-Headers",
+                    "Content-Type, Accept, Mcp-Session-Id");
+            exchange.getResponseHeaders().add("Access-Control-Expose-Headers", "Mcp-Session-Id");
 
-            if ("OPTIONS".equals(exchange.getRequestMethod())) {
+            String method = exchange.getRequestMethod();
+
+            if ("OPTIONS".equals(method)) {
                 exchange.sendResponseHeaders(200, -1);
                 return;
             }
 
-            if (!"POST".equals(exchange.getRequestMethod())) {
-                sendError(exchange, 405, "Method not allowed");
-                return;
+            switch (method) {
+                case "POST":
+                    handlePost(exchange);
+                    break;
+                case "GET":
+                    handleGet(exchange);
+                    break;
+                case "DELETE":
+                    handleDelete(exchange);
+                    break;
+                default:
+                    sendError(exchange, 405, "Method not allowed");
             }
+        }
 
+        /**
+         * POST /mcp — Handle JSON-RPC requests.
+         * Responds with application/json or text/event-stream based on Accept header.
+         */
+        private void handlePost(HttpExchange exchange) throws IOException {
             try {
-                // Read request body
                 InputStream is = exchange.getRequestBody();
                 String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
 
                 System.out.println("MCP Request: " + body);
 
                 JsonObject request = JsonParser.parseString(body).getAsJsonObject();
-                JsonObject response = handleRequest(request);
+                String rpcMethod = request.has("method") ? request.get("method").getAsString() : "";
+
+                // Handle initialize — create session
+                String sessionId = exchange.getRequestHeaders().getFirst("Mcp-Session-Id");
+
+                if ("initialize".equals(rpcMethod)) {
+                    sessionId = UUID.randomUUID().toString();
+                    sessions.put(sessionId, true);
+                }
+
+                JsonObject response = handleJsonRpc(request);
 
                 String responseStr = GSON.toJson(response);
                 System.out.println("MCP Response: " + responseStr);
 
                 byte[] responseBytes = responseStr.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
+                if (sessionId != null) {
+                    exchange.getResponseHeaders().add("Mcp-Session-Id", sessionId);
+                }
                 exchange.sendResponseHeaders(200, responseBytes.length);
 
                 OutputStream os = exchange.getResponseBody();
@@ -152,7 +190,73 @@ public class McpServer {
             }
         }
 
-        private JsonObject handleRequest(JsonObject request) {
+        /**
+         * GET /mcp — SSE endpoint for server-to-client messages.
+         * Claude Code uses this to verify the server is alive.
+         */
+        private void handleGet(HttpExchange exchange) throws IOException {
+            String accept = exchange.getRequestHeaders().getFirst("Accept");
+
+            if (accept != null && accept.contains("text/event-stream")) {
+                // SSE stream — keep connection open
+                exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+                exchange.getResponseHeaders().add("Cache-Control", "no-cache");
+                exchange.getResponseHeaders().add("Connection", "keep-alive");
+
+                String sessionId = exchange.getRequestHeaders().getFirst("Mcp-Session-Id");
+                if (sessionId != null) {
+                    exchange.getResponseHeaders().add("Mcp-Session-Id", sessionId);
+                }
+
+                exchange.sendResponseHeaders(200, 0);
+
+                // Send an initial comment to keep connection alive
+                OutputStream os = exchange.getResponseBody();
+                os.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
+                os.flush();
+
+                // Keep stream open — Claude Code will close when done
+                // This thread will block until the client disconnects
+                try {
+                    while (running) {
+                        Thread.sleep(15000);
+                        os.write(": ping\n\n".getBytes(StandardCharsets.UTF_8));
+                        os.flush();
+                    }
+                } catch (Exception e) {
+                    // Client disconnected or server stopped
+                }
+                try { os.close(); } catch (Exception e) { /* ignore */ }
+            } else {
+                // Regular GET — return server info as JSON
+                JsonObject info = new JsonObject();
+                info.addProperty("name", "sap-adt-mcp-server");
+                info.addProperty("version", "1.0.0");
+                info.addProperty("protocol", MCP_PROTOCOL_VERSION);
+                info.addProperty("tools", tools.size());
+                info.addProperty("status", "running");
+
+                byte[] responseBytes = GSON.toJson(info).getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, responseBytes.length);
+                OutputStream os = exchange.getResponseBody();
+                os.write(responseBytes);
+                os.close();
+            }
+        }
+
+        /**
+         * DELETE /mcp — Close a session.
+         */
+        private void handleDelete(HttpExchange exchange) throws IOException {
+            String sessionId = exchange.getRequestHeaders().getFirst("Mcp-Session-Id");
+            if (sessionId != null) {
+                sessions.remove(sessionId);
+            }
+            exchange.sendResponseHeaders(200, -1);
+        }
+
+        private JsonObject handleJsonRpc(JsonObject request) {
             String method = request.has("method") ? request.get("method").getAsString() : "";
             JsonElement idElement = request.get("id");
 
@@ -163,7 +267,11 @@ public class McpServer {
             }
 
             try {
-                JsonObject result = dispatchMethod(method, request.getAsJsonObject("params"));
+                JsonElement paramsElement = request.get("params");
+                JsonObject params = (paramsElement != null && paramsElement.isJsonObject())
+                        ? paramsElement.getAsJsonObject()
+                        : new JsonObject();
+                JsonObject result = dispatchMethod(method, params);
                 response.add("result", result);
             } catch (Exception e) {
                 JsonObject error = new JsonObject();
@@ -184,7 +292,8 @@ public class McpServer {
                 case "tools/call":
                     return handleToolsCall(params);
                 case "notifications/initialized":
-                    // Acknowledgment, no response needed
+                    return new JsonObject();
+                case "ping":
                     return new JsonObject();
                 default:
                     throw new Exception("Unknown method: " + method);
