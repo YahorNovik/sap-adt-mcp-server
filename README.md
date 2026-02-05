@@ -40,7 +40,7 @@ The plugin logs into SAP via ADT REST APIs and registers all 15 tools. You'll se
 
 ### 4. Start the MCP Server
 
-Click **Start Server**. This starts a local HTTP server on port 3000 that speaks the MCP protocol. The plugin also automatically writes the MCP configuration to `~/.claude/mcp_servers.json` — if you already have other MCP servers configured (like sap-docs), they are preserved.
+Click **Start Server**. This starts a local HTTP server on port 3000 that speaks the MCP protocol. The plugin automatically writes the MCP configuration to `~/.claude/mcp_servers.json` with both the ADT server and the SAP documentation server ([mcp-sap-docs](https://github.com/marianfoo/mcp-sap-docs)). Any other MCP servers you already have configured are preserved.
 
 ### 5. Launch Claude Code
 
@@ -111,11 +111,11 @@ Once Claude Code is running with the SAP server:
 
 Claude reads the code, makes changes, runs checks, and activates — all through the MCP tools.
 
-## Adding SAP Documentation Search
+## SAP Documentation Search (Included Automatically)
 
-For even better results, add the [mcp-sap-docs](https://github.com/marianfoo/mcp-sap-docs) server. It gives Claude access to SAP Help Portal, SAP Community posts, and ABAP language reference — so it can look up documentation while coding.
+When you start the MCP server, the plugin automatically configures [mcp-sap-docs](https://github.com/marianfoo/mcp-sap-docs) alongside the ADT server. No manual setup needed.
 
-The hosted version requires no setup. Just add it to your `~/.claude/mcp_servers.json`:
+Your `~/.claude/mcp_servers.json` will contain both:
 
 ```json
 {
@@ -128,7 +128,11 @@ The hosted version requires no setup. Just add it to your `~/.claude/mcp_servers
 }
 ```
 
-Now Claude can both work with your SAP system **and** search official SAP documentation.
+This gives Claude Code access to:
+- **sap-adt** — live SAP system (read/write code, run tests, activate, etc.)
+- **sap-docs** — SAP Help Portal, SAP Community posts, ABAP language reference
+
+If you already have `sap-docs` configured with a custom URL, it won't be overwritten.
 
 ## Building from Source
 
