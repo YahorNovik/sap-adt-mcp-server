@@ -224,101 +224,28 @@ public class McpServerView extends ViewPart {
     }
 
     private void writeMcpConfig() {
-        // Use 'claude mcp add' CLI command — the official way to register MCP servers.
-        // This writes to ~/.claude.json under the mcpServers key.
-        addMcpServer("sap-adt", "http://localhost:" + DEFAULT_PORT + "/mcp");
-        addMcpServer("sap-docs", "https://mcp-sap-docs.marianzeis.de/mcp");
-    }
+        String adtUrl = "http://localhost:" + DEFAULT_PORT + "/mcp";
+        String docsUrl = "https://mcp-sap-docs.marianzeis.de/mcp";
 
-    private void addMcpServer(String name, String url) {
-        // Try multiple ways to find the claude CLI
-        String[] commands = getClaudeCommands();
+        appendOutput("\n");
+        appendOutput("=== Run these commands to register MCP servers in Claude Code ===\n\n");
+        appendOutput("claude mcp add --transport http --scope user sap-adt " + adtUrl + "\n");
+        appendOutput("claude mcp add --transport http --scope user sap-docs " + docsUrl + "\n");
+        appendOutput("\n");
+        appendOutput("Then verify with: claude mcp list\n");
+        appendOutput("================================================================\n\n");
 
-        for (String cmd : commands) {
-            try {
-                ProcessBuilder pb;
-                if (cmd.startsWith("wsl")) {
-                    // Run through WSL
-                    pb = new ProcessBuilder(
-                            "wsl", "--", "claude", "mcp", "add",
-                            "--transport", "http",
-                            "--scope", "user",
-                            name, url);
-                } else {
-                    pb = new ProcessBuilder(
-                            cmd, "mcp", "add",
-                            "--transport", "http",
-                            "--scope", "user",
-                            name, url);
-                }
-                pb.redirectErrorStream(true);
-                Process p = pb.start();
-
-                String output;
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                    output = reader.lines().reduce("", (a, b) -> a + b + "\n");
-                }
-
-                int exitCode = p.waitFor();
-                if (exitCode == 0) {
-                    appendOutput("Registered MCP server '" + name + "' -> " + url + "\n");
-                    return;
-                }
-            } catch (Exception e) {
-                // Try next command
-            }
-        }
-
-        // All CLI attempts failed, write directly
-        appendOutput("Claude CLI not found via any method, writing config directly.\n");
-        addMcpServerFallback(name, url);
-    }
-
-    private String[] getClaudeCommands() {
-        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-        if (isWindows) {
-            // On Windows: try claude.cmd (npm global), claude.exe, then WSL
-            return new String[]{"claude.cmd", "claude.exe", "claude", "wsl"};
-        } else {
-            return new String[]{"claude"};
-        }
-    }
-
-    private void addMcpServerFallback(String name, String url) {
+        // Copy commands to clipboard
+        String commands = "claude mcp add --transport http --scope user sap-adt " + adtUrl
+                + "\nclaude mcp add --transport http --scope user sap-docs " + docsUrl;
         try {
-            String homeDir = System.getProperty("user.home");
-            File configFile = new File(homeDir, ".claude.json");
-
-            com.google.gson.JsonObject config = new com.google.gson.JsonObject();
-            if (configFile.exists()) {
-                try (java.io.FileReader reader = new java.io.FileReader(configFile)) {
-                    config = com.google.gson.JsonParser.parseReader(reader).getAsJsonObject();
-                } catch (Exception e) {
-                    config = new com.google.gson.JsonObject();
-                }
-            }
-
-            com.google.gson.JsonObject mcpServers;
-            if (config.has("mcpServers") && config.get("mcpServers").isJsonObject()) {
-                mcpServers = config.getAsJsonObject("mcpServers");
-            } else {
-                mcpServers = new com.google.gson.JsonObject();
-            }
-
-            com.google.gson.JsonObject server = new com.google.gson.JsonObject();
-            server.addProperty("type", "http");
-            server.addProperty("url", url);
-            mcpServers.add(name, server);
-            config.add("mcpServers", mcpServers);
-
-            com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
-            try (FileWriter writer = new FileWriter(configFile)) {
-                writer.write(gson.toJson(config));
-            }
-
-            appendOutput("Wrote '" + name + "' to " + configFile.getAbsolutePath() + "\n");
-        } catch (IOException e) {
-            appendOutput("ERROR: Could not write MCP config: " + e.getMessage() + "\n");
+            org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(Display.getDefault());
+            org.eclipse.swt.dnd.TextTransfer textTransfer = org.eclipse.swt.dnd.TextTransfer.getInstance();
+            clipboard.setContents(new Object[]{commands}, new org.eclipse.swt.dnd.Transfer[]{textTransfer});
+            clipboard.dispose();
+            appendOutput("Commands copied to clipboard. Paste in your terminal.\n\n");
+        } catch (Exception e) {
+            // Clipboard not available, commands are still shown in output
         }
     }
 
