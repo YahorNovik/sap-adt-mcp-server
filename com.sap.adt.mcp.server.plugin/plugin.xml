@@ -32,7 +32,7 @@
    <extension point="org.eclipse.ui.preferencePages">
       <page
             id="com.sap.adt.mcp.preferences"
-            name="SAP ADT MCP Server"
+            name="SAP ADT MCP Server for Claude Code"
             class="com.sap.adt.mcp.preferences.McpPreferencePage">
       </page>
    </extension>

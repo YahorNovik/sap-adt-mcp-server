@@ -13,5 +13,5 @@
     <artifactId>com.sap.adt.mcp.server.site</artifactId>
     <packaging>eclipse-repository</packaging>
 
-    <name>SAP ADT MCP Server - P2 Repository</name>
+    <name>SAP ADT MCP Server for Claude Code - P2 Repository</name>
 </project>

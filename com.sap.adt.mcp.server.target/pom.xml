@@ -13,5 +13,5 @@
     <artifactId>com.sap.adt.mcp.server.target</artifactId>
     <packaging>eclipse-target-definition</packaging>
 
-    <name>SAP ADT MCP Server - Target Platform</name>
+    <name>SAP ADT MCP Server for Claude Code - Target Platform</name>
 </project>

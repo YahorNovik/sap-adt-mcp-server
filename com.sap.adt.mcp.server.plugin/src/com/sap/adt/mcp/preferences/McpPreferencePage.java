@@ -9,14 +9,14 @@ import org.eclipse.ui.IWorkbenchPreferencePage;
 import com.sap.adt.mcp.Activator;
 
 /**
- * Preference page for SAP ADT MCP Server settings.
+ * Preference page for SAP ADT MCP Server for Claude Code settings.
  */
 public class McpPreferencePage extends FieldEditorPreferencePage implements IWorkbenchPreferencePage {
 
     public McpPreferencePage() {
         super(GRID);
         setPreferenceStore(Activator.getDefault().getPreferenceStore());
-        setDescription("Settings for the SAP ADT MCP Server that enables Claude Code integration.");
+        setDescription("Settings for the SAP ADT MCP Server for Claude Code.");
     }
 
     @Override

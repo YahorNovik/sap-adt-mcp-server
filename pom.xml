@@ -9,7 +9,7 @@
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>SAP ADT MCP Server - Parent</name>
+    <name>SAP ADT MCP Server for Claude Code - Parent</name>
     <description>MCP Server for SAP ADT - Enables Claude Code to interact with SAP systems</description>
 
     <properties>

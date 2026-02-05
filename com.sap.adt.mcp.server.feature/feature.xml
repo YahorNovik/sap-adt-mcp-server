@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <feature
       id="com.sap.adt.mcp.server.feature"
-      label="SAP ADT MCP Server"
+      label="SAP ADT MCP Server for Claude Code"
       version="1.0.0.qualifier"
       provider-name="SAP ADT MCP">
 

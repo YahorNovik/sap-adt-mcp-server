@@ -13,5 +13,5 @@
     <artifactId>com.sap.adt.mcp.server.feature</artifactId>
     <packaging>eclipse-feature</packaging>
 
-    <name>SAP ADT MCP Server - Feature</name>
+    <name>SAP ADT MCP Server for Claude Code - Feature</name>
 </project>

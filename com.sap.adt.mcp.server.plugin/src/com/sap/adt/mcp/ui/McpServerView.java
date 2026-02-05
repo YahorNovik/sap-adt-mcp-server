@@ -114,7 +114,7 @@ public class McpServerView extends ViewPart {
         outputText.setEditable(false);
         outputText.setFont(parent.getDisplay().getSystemFont());
 
-        appendOutput("SAP ADT MCP Server\n");
+        appendOutput("SAP ADT MCP Server for Claude Code\n");
         appendOutput("==================\n\n");
         appendOutput("This plugin exposes SAP ADT tools via MCP protocol for Claude Code.\n\n");
         appendOutput("1. Click 'Connect SAP' to enter connection details\n");

@@ -13,5 +13,5 @@
     <artifactId>com.sap.adt.mcp.server.plugin</artifactId>
     <packaging>eclipse-plugin</packaging>
 
-    <name>SAP ADT MCP Server - Plugin</name>
+    <name>SAP ADT MCP Server for Claude Code - Plugin</name>
 </project>

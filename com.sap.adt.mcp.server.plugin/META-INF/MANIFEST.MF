@@ -1,6 +1,6 @@
 Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
-Bundle-Name: SAP ADT MCP Server
+Bundle-Name: SAP ADT MCP Server for Claude Code
 Bundle-SymbolicName: com.sap.adt.mcp.server.plugin;singleton:=true
 Bundle-Version: 1.0.0.qualifier
 Bundle-Activator: com.sap.adt.mcp.Activator

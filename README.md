@@ -1,4 +1,4 @@
-# SAP ADT MCP Server
+# SAP ADT MCP Server for Claude Code
 
 An Eclipse plugin that connects Claude Code to your SAP system. It runs an MCP (Model Context Protocol) server inside Eclipse, giving Claude Code full access to your ABAP codebase — search, read, write, test, and activate objects, all from the command line.
 
@@ -13,14 +13,14 @@ You install this plugin in Eclipse, connect it to your SAP system, and start the
 Open Eclipse and go to **Help → Install New Software...**
 
 Click **Add...** and enter:
-- **Name:** `SAP ADT MCP Server`
+- **Name:** `SAP ADT MCP Server for Claude Code`
 - **Location:** `https://yahornovik.github.io/sap-adt-mcp-server/`
 
-Check **SAP ADT MCP Server**, click **Next → Finish**, and restart Eclipse.
+Check **SAP ADT MCP Server for Claude Code**, click **Next → Finish**, and restart Eclipse.
 
 ### 2. Open the View
 
-Go to **Window → Show View → Other...**, find **SAP ADT MCP Server** and open it.
+Go to **Window → Show View → Other...**, find **SAP ADT MCP Server for Claude Code** and open it.
 
 You'll see a panel with four buttons: **Connect SAP**, **Start Server**, **Launch Claude Code**, and **Clear**.
 

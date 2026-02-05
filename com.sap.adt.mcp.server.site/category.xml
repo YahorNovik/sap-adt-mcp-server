@@ -3,7 +3,7 @@
    <feature url="features/com.sap.adt.mcp.server.feature_1.0.0.qualifier.jar" id="com.sap.adt.mcp.server.feature" version="1.0.0.qualifier">
       <category name="com.sap.adt.mcp"/>
    </feature>
-   <category-def name="com.sap.adt.mcp" label="SAP ADT MCP Server">
+   <category-def name="com.sap.adt.mcp" label="SAP ADT MCP Server for Claude Code">
       <description>
          MCP Server plugin for SAP ADT that enables Claude Code CLI integration with SAP systems.
       </description>
