@@ -250,6 +250,14 @@ public class McpServerView extends ViewPart {
             sapAdt.addProperty("url", "http://localhost:" + DEFAULT_PORT + "/mcp");
             config.add("sap-adt", sapAdt);
 
+            // Add sap-docs (SAP documentation search) if not already present
+            if (!config.has("sap-docs")) {
+                com.google.gson.JsonObject sapDocs = new com.google.gson.JsonObject();
+                sapDocs.addProperty("url", "https://mcp-sap-docs.marianzeis.de/mcp");
+                config.add("sap-docs", sapDocs);
+                appendOutput("Added SAP documentation MCP server (mcp-sap-docs).\n");
+            }
+
             // Write merged config with pretty printing
             com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
             try (FileWriter writer = new FileWriter(configFile)) {
@@ -257,12 +265,6 @@ public class McpServerView extends ViewPart {
             }
 
             appendOutput("MCP config written to: " + configFile.getAbsolutePath() + "\n");
-
-            // Suggest adding sap-docs if not present
-            if (!config.has("sap-docs")) {
-                appendOutput("TIP: Add SAP documentation search by running:\n");
-                appendOutput("  Add \"sap-docs\": {\"url\": \"https://mcp-sap-docs.marianzeis.de/mcp\"} to config\n");
-            }
         } catch (IOException e) {
             appendOutput("WARNING: Could not write MCP config: " + e.getMessage() + "\n");
         }
