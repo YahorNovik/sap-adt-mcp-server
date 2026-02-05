@@ -231,31 +231,56 @@ public class McpServerView extends ViewPart {
     }
 
     private void addMcpServer(String name, String url) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    "claude", "mcp", "add",
-                    "--transport", "http",
-                    "--scope", "user",
-                    name, url);
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
+        // Try multiple ways to find the claude CLI
+        String[] commands = getClaudeCommands();
 
-            String output;
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                output = reader.lines().reduce("", (a, b) -> a + b + "\n");
-            }
+        for (String cmd : commands) {
+            try {
+                ProcessBuilder pb;
+                if (cmd.startsWith("wsl")) {
+                    // Run through WSL
+                    pb = new ProcessBuilder(
+                            "wsl", "--", "claude", "mcp", "add",
+                            "--transport", "http",
+                            "--scope", "user",
+                            name, url);
+                } else {
+                    pb = new ProcessBuilder(
+                            cmd, "mcp", "add",
+                            "--transport", "http",
+                            "--scope", "user",
+                            name, url);
+                }
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
 
-            int exitCode = p.waitFor();
-            if (exitCode == 0) {
-                appendOutput("Registered MCP server '" + name + "' -> " + url + "\n");
-            } else {
-                appendOutput("WARNING: Could not register '" + name + "': " + output.trim() + "\n");
-                // Fallback: write to ~/.claude.json directly
-                addMcpServerFallback(name, url);
+                String output;
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                    output = reader.lines().reduce("", (a, b) -> a + b + "\n");
+                }
+
+                int exitCode = p.waitFor();
+                if (exitCode == 0) {
+                    appendOutput("Registered MCP server '" + name + "' -> " + url + "\n");
+                    return;
+                }
+            } catch (Exception e) {
+                // Try next command
             }
-        } catch (Exception e) {
-            appendOutput("WARNING: 'claude' CLI not found, writing config directly.\n");
-            addMcpServerFallback(name, url);
+        }
+
+        // All CLI attempts failed, write directly
+        appendOutput("Claude CLI not found via any method, writing config directly.\n");
+        addMcpServerFallback(name, url);
+    }
+
+    private String[] getClaudeCommands() {
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        if (isWindows) {
+            // On Windows: try claude.cmd (npm global), claude.exe, then WSL
+            return new String[]{"claude.cmd", "claude.exe", "claude", "wsl"};
+        } else {
+            return new String[]{"claude"};
         }
     }
 
