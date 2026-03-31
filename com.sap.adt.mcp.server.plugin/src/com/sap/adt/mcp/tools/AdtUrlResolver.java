@@ -43,7 +43,7 @@ public final class AdtUrlResolver {
         }
         String template = OBJECT_URL_TEMPLATES.get(objectType.toUpperCase());
         if (template != null) {
-            return template.replace("{name}", objectName.toLowerCase());
+            return template.replace("{name}", objectName.toUpperCase());
         }
         return null;
     }

@@ -34,40 +34,67 @@ public final class AdtXmlParser {
 
         try {
             Document doc = parseDocument(xml);
-            NodeList refs = doc.getElementsByTagNameNS(NS_ADT, "objectReference");
-            if (refs.getLength() == 0) {
-                refs = doc.getElementsByTagName("objectReference");
-            }
 
-            if (refs.getLength() > 0) {
-                for (int i = 0; i < refs.getLength(); i++) {
-                    Element ref = (Element) refs.item(i);
-                    JsonObject entry = new JsonObject();
-                    entry.addProperty("name", attr(ref, "adtcore:name", attr(ref, "name", "")));
-                    entry.addProperty("type", attr(ref, "adtcore:type", attr(ref, "type", "")));
-                    entry.addProperty("uri", attr(ref, "uri", ""));
-                    entry.addProperty("description", attr(ref, "adtcore:description", attr(ref, "description", "")));
-                    entry.addProperty("packageName", attr(ref, "adtcore:packageName", attr(ref, "packageName", "")));
-                    results.add(entry);
-                }
-                return results;
-            }
-
+            // Try atom:entry first (standard ADT search response)
             NodeList entries = doc.getElementsByTagNameNS(NS_ATOM, "entry");
             if (entries.getLength() == 0) {
                 entries = doc.getElementsByTagName("entry");
             }
 
-            for (int i = 0; i < entries.getLength(); i++) {
-                Element entry = (Element) entries.item(i);
-                JsonObject obj = new JsonObject();
-                obj.addProperty("name", childText(entry, "title", ""));
-                obj.addProperty("uri", childAttr(entry, "link", "href", ""));
-                obj.addProperty("type", childText(entry, "category", ""));
-                obj.addProperty("description", childText(entry, "summary", ""));
-                obj.addProperty("packageName", "");
-                results.add(obj);
+            if (entries.getLength() > 0) {
+                for (int i = 0; i < entries.getLength(); i++) {
+                    Element entry = (Element) entries.item(i);
+                    JsonObject obj = new JsonObject();
+
+                    // Get name from title or objectReference
+                    String name = childText(entry, "title", "");
+
+                    // Try objectReference inside entry
+                    NodeList refs = entry.getElementsByTagName("objectReference");
+                    if (refs.getLength() == 0) {
+                        refs = entry.getElementsByTagNameNS(NS_ADT, "objectReference");
+                    }
+                    if (refs.getLength() == 0) {
+                        refs = entry.getElementsByTagNameNS(NS_ADT_CORE, "objectReference");
+                    }
+
+                    if (refs.getLength() > 0) {
+                        Element ref = (Element) refs.item(0);
+                        String refName = attr(ref, "adtcore:name", attr(ref, "name", ""));
+                        if (!refName.isEmpty()) name = refName;
+                        obj.addProperty("name", name);
+                        obj.addProperty("type", attr(ref, "adtcore:type", attr(ref, "type", childText(entry, "category", ""))));
+                        obj.addProperty("uri", attr(ref, "adtcore:uri", attr(ref, "uri", childAttr(entry, "link", "href", ""))));
+                        obj.addProperty("description", attr(ref, "adtcore:description", attr(ref, "description", childText(entry, "summary", ""))));
+                        obj.addProperty("packageName", attr(ref, "adtcore:packageName", attr(ref, "packageName", "")));
+                    } else {
+                        obj.addProperty("name", name);
+                        obj.addProperty("uri", childAttr(entry, "link", "href", ""));
+                        obj.addProperty("type", childText(entry, "category", ""));
+                        obj.addProperty("description", childText(entry, "summary", ""));
+                        obj.addProperty("packageName", "");
+                    }
+                    results.add(obj);
+                }
+                return results;
             }
+
+            // Fallback: try objectReference directly
+            NodeList refs = doc.getElementsByTagNameNS(NS_ADT, "objectReference");
+            if (refs.getLength() == 0) refs = doc.getElementsByTagNameNS(NS_ADT_CORE, "objectReference");
+            if (refs.getLength() == 0) refs = doc.getElementsByTagName("objectReference");
+
+            for (int i = 0; i < refs.getLength(); i++) {
+                Element ref = (Element) refs.item(i);
+                JsonObject entry = new JsonObject();
+                entry.addProperty("name", attr(ref, "adtcore:name", attr(ref, "name", "")));
+                entry.addProperty("type", attr(ref, "adtcore:type", attr(ref, "type", "")));
+                entry.addProperty("uri", attr(ref, "adtcore:uri", attr(ref, "uri", "")));
+                entry.addProperty("description", attr(ref, "adtcore:description", attr(ref, "description", "")));
+                entry.addProperty("packageName", attr(ref, "adtcore:packageName", attr(ref, "packageName", "")));
+                results.add(entry);
+            }
+
         } catch (Exception e) {
             System.err.println("AdtXmlParser.parseSearchResults failed: " + e.getMessage());
         }
