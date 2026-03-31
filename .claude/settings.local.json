@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__sap-adt__sap_search_object",
+      "mcp__sap-adt__sap_sql_query"
+    ]
+  }
+}
