@@ -25,6 +25,7 @@ public final class AdtXmlParser {
     private static final String NS_ADT = "http://www.sap.com/adt/api";
     private static final String NS_ADT_CORE = "http://www.sap.com/adt/core";
     private static final String NS_CHKRUN = "http://www.sap.com/adt/checkrun";
+    private static final String NS_DATA_PREVIEW = "http://www.sap.com/adt/dataPreview";
 
     private AdtXmlParser() {}
 
@@ -34,7 +35,13 @@ public final class AdtXmlParser {
 
         try {
             Document doc = parseDocument(xml);
-            NodeList refs = doc.getElementsByTagNameNS(NS_ADT, "objectReference");
+            NodeList refs = doc.getElementsByTagNameNS(NS_ADT_CORE, "objectReference");
+            if (refs.getLength() == 0) {
+                refs = doc.getElementsByTagNameNS(NS_ADT, "objectReference");
+            }
+            if (refs.getLength() == 0) {
+                refs = doc.getElementsByTagName("adtcore:objectReference");
+            }
             if (refs.getLength() == 0) {
                 refs = doc.getElementsByTagName("objectReference");
             }
@@ -45,7 +52,7 @@ public final class AdtXmlParser {
                     JsonObject entry = new JsonObject();
                     entry.addProperty("name", attr(ref, "adtcore:name", attr(ref, "name", "")));
                     entry.addProperty("type", attr(ref, "adtcore:type", attr(ref, "type", "")));
-                    entry.addProperty("uri", attr(ref, "uri", ""));
+                    entry.addProperty("uri", attr(ref, "adtcore:uri", attr(ref, "uri", "")));
                     entry.addProperty("description", attr(ref, "adtcore:description", attr(ref, "description", "")));
                     entry.addProperty("packageName", attr(ref, "adtcore:packageName", attr(ref, "packageName", "")));
                     results.add(entry);
@@ -221,6 +228,31 @@ public final class AdtXmlParser {
         return (value != null && !value.isEmpty()) ? value : defaultValue;
     }
 
+    private static String attrNS(Element el, String namespaceUri, String localName, String defaultValue) {
+        if (el == null) return defaultValue;
+        String value = el.getAttributeNS(namespaceUri, localName);
+        if (value == null || value.isEmpty()) {
+            // Fall back to a non-namespaced attribute of the same local name
+            value = el.getAttribute(localName);
+        }
+        return (value != null && !value.isEmpty()) ? value : defaultValue;
+    }
+
+    private static Element firstChildElement(Element parent, String namespaceUri, String localName) {
+        if (parent == null) return null;
+        NodeList children = parent.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child.getNodeType() != Node.ELEMENT_NODE) continue;
+            String childLocal = child.getLocalName() != null ? child.getLocalName() : child.getNodeName();
+            if (localName.equals(childLocal)
+                    && (child.getNamespaceURI() == null || child.getNamespaceURI().equals(namespaceUri))) {
+                return (Element) child;
+            }
+        }
+        return null;
+    }
+
     private static String childText(Element parent, String tagName, String defaultValue) {
         if (parent == null) return defaultValue;
         NodeList children = parent.getElementsByTagName(tagName);
@@ -351,7 +383,65 @@ public final class AdtXmlParser {
         try {
             Document doc = parseDocument(xml);
 
-            // Parse column metadata
+            // ADT data preview responses are column-major: one <dataPreview:columns>
+            // block per column, each holding a <dataPreview:metadata> element and a
+            // <dataPreview:dataSet> whose <dataPreview:data> children are that
+            // column's values, one per row.
+            NodeList colBlocks = doc.getElementsByTagNameNS(NS_DATA_PREVIEW, "columns");
+            if (colBlocks.getLength() == 0) {
+                colBlocks = doc.getElementsByTagName("dataPreview:columns");
+            }
+
+            if (colBlocks.getLength() > 0) {
+                java.util.List<java.util.List<String>> columnData = new java.util.ArrayList<>();
+                int rowCount = 0;
+
+                for (int i = 0; i < colBlocks.getLength(); i++) {
+                    Element block = (Element) colBlocks.item(i);
+
+                    Element metadata = firstChildElement(block, NS_DATA_PREVIEW, "metadata");
+                    JsonObject colObj = new JsonObject();
+                    colObj.addProperty("name", attrNS(metadata, NS_DATA_PREVIEW, "name", "COL" + i));
+                    colObj.addProperty("type", attrNS(metadata, NS_DATA_PREVIEW, "type", ""));
+                    colObj.addProperty("description", attrNS(metadata, NS_DATA_PREVIEW, "description", ""));
+                    columns.add(colObj);
+
+                    java.util.List<String> values = new java.util.ArrayList<>();
+                    Element dataSet = firstChildElement(block, NS_DATA_PREVIEW, "dataSet");
+                    if (dataSet != null) {
+                        NodeList data = dataSet.getElementsByTagNameNS(NS_DATA_PREVIEW, "data");
+                        if (data.getLength() == 0) {
+                            data = dataSet.getElementsByTagName("dataPreview:data");
+                        }
+                        for (int j = 0; j < data.getLength(); j++) {
+                            String val = data.item(j).getTextContent();
+                            values.add(val != null ? val : "");
+                        }
+                    }
+                    columnData.add(values);
+                    rowCount = Math.max(rowCount, values.size());
+                }
+
+                for (int r = 0; r < rowCount; r++) {
+                    JsonArray rowData = new JsonArray();
+                    for (java.util.List<String> col : columnData) {
+                        rowData.add(r < col.size() ? col.get(r) : "");
+                    }
+                    rows.add(rowData);
+                }
+
+                result.addProperty("rowCount", rows.size());
+                NodeList totalRows = doc.getElementsByTagNameNS(NS_DATA_PREVIEW, "totalRows");
+                if (totalRows.getLength() > 0) {
+                    try {
+                        result.addProperty("totalRows",
+                                Long.parseLong(totalRows.item(0).getTextContent().trim()));
+                    } catch (NumberFormatException ignored) {}
+                }
+                return result;
+            }
+
+            // Fallback: row-major format with <column>/<row>/<value> elements
             NodeList metadataNodes = doc.getElementsByTagName("dataPreview:column");
             if (metadataNodes.getLength() == 0) {
                 metadataNodes = doc.getElementsByTagName("column");
@@ -366,7 +456,6 @@ public final class AdtXmlParser {
                 columns.add(colObj);
             }
 
-            // Parse data rows
             NodeList dataRows = doc.getElementsByTagName("dataPreview:row");
             if (dataRows.getLength() == 0) {
                 dataRows = doc.getElementsByTagName("row");
