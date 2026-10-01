@@ -119,7 +119,7 @@ public abstract class AbstractMcpTool implements McpTool {
         return sourceUrl;
     }
 
-    protected String escapeXml(String value) {
+    protected static String escapeXml(String value) {
         if (value == null) return "";
         return value
                 .replace("&", "&amp;")

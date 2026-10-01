@@ -136,13 +136,16 @@ public class SetSourceTool extends AbstractMcpTool {
                         + "\" adtcore:name=\"" + escapeXml(objectName) + "\"/>"
                         + "</adtcore:objectReferences>";
 
-                client.post(
+                HttpResponse<String> actResp = client.post(
                         "/sap/bc/adt/activation?method=activate&preauditRequested=true",
                         activateXml,
                         "application/xml",
                         "application/xml,application/vnd.sap.adt.inactivectsobjects.v1+xml;q=0.9");
 
-                output.addProperty("activated", true);
+                // Activation errors come back with HTTP 200 and the messages in the body.
+                JsonObject act = AdtXmlParser.parseActivationResult(actResp.body());
+                output.addProperty("activated", act.get("success").getAsBoolean());
+                output.add("activationMessages", act.get("messages"));
             } catch (Exception e) {
                 output.addProperty("activated", false);
                 output.addProperty("activationError", e.getMessage());

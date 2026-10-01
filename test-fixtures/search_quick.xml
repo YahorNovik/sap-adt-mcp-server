@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><adtcore:objectReferences xmlns:adtcore="http://www.sap.com/adt/core"><adtcore:objectReference adtcore:uri="/sap/bc/adt/oo/classes/cl_abap_typedescr" adtcore:type="CLAS/OC" adtcore:name="CL_ABAP_TYPEDESCR" adtcore:packageName="SABP_RTTI" adtcore:description="Runtime Type Services"/></adtcore:objectReferences>
