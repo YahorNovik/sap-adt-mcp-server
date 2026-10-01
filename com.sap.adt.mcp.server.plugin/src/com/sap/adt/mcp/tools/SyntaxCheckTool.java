@@ -23,6 +23,20 @@ public class SyntaxCheckTool extends AbstractMcpTool {
         return NAME;
     }
 
+    /**
+     * Builds the ADT checkrun request body. The backend expects the OBJECT URL in
+     * adtcore:uri plus chkrun:version; sending the source URL in chkrun:uri fails
+     * with "uriMappingError: No URI-Mapping defined for URI" (HTTP 500).
+     */
+    public static String buildCheckRunXml(String sourceUrl) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<chkrun:checkObjectList xmlns:chkrun=\"http://www.sap.com/adt/checkrun\" "
+                + "xmlns:adtcore=\"http://www.sap.com/adt/core\">\n"
+                + "  <chkrun:checkObject adtcore:uri=\"" + escapeXml(toObjectUrl(sourceUrl))
+                + "\" chkrun:version=\"active\"/>\n"
+                + "</chkrun:checkObjectList>";
+    }
+
     @Override
     public String getDescription() {
         return "Run ABAP syntax check on source code. Returns errors and warnings with line numbers.";
@@ -54,11 +68,7 @@ public class SyntaxCheckTool extends AbstractMcpTool {
         }
         sourceUrl = ensureSourceUrl(sourceUrl);
 
-        String checkXml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-                + "<chkrun:checkObjectList xmlns:chkrun=\"http://www.sap.com/adt/checkrun\" "
-                + "xmlns:adtcore=\"http://www.sap.com/adt/core\">\n"
-                + "  <chkrun:checkObject chkrun:uri=\"" + escapeXml(sourceUrl) + "\"/>\n"
-                + "</chkrun:checkObjectList>";
+        String checkXml = buildCheckRunXml(sourceUrl);
 
         HttpResponse<String> response = client.post(
                 "/sap/bc/adt/checkruns?reporters=abapCheckRun",

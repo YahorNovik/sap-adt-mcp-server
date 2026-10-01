@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><chkl:messages xmlns:chkl="http://www.sap.com/abapxml/checklist"><msg objDescr="Program ZTEST_MCP" type="E" line="3" href="/sap/bc/adt/programs/programs/ztest_mcp/source/main#start=3,0" forceSupported="true"><shortText><txt>Field "FOO" is unknown.</txt></shortText></msg></chkl:messages>

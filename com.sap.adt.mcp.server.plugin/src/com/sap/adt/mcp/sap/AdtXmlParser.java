@@ -1,6 +1,8 @@
 package com.sap.adt.mcp.sap;
 
 import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -34,10 +36,9 @@ public final class AdtXmlParser {
 
         try {
             Document doc = parseDocument(xml);
-            NodeList refs = doc.getElementsByTagNameNS(NS_ADT, "objectReference");
-            if (refs.getLength() == 0) {
-                refs = doc.getElementsByTagName("objectReference");
-            }
+            // ADT returns adtcore:objectReference in namespace http://www.sap.com/adt/core;
+            // match the local name in any namespace to stay robust across releases.
+            NodeList refs = doc.getElementsByTagNameNS("*", "objectReference");
 
             if (refs.getLength() > 0) {
                 for (int i = 0; i < refs.getLength(); i++) {
@@ -45,7 +46,7 @@ public final class AdtXmlParser {
                     JsonObject entry = new JsonObject();
                     entry.addProperty("name", attr(ref, "adtcore:name", attr(ref, "name", "")));
                     entry.addProperty("type", attr(ref, "adtcore:type", attr(ref, "type", "")));
-                    entry.addProperty("uri", attr(ref, "uri", ""));
+                    entry.addProperty("uri", attr(ref, "adtcore:uri", attr(ref, "uri", "")));
                     entry.addProperty("description", attr(ref, "adtcore:description", attr(ref, "description", "")));
                     entry.addProperty("packageName", attr(ref, "adtcore:packageName", attr(ref, "packageName", "")));
                     results.add(entry);
@@ -53,10 +54,7 @@ public final class AdtXmlParser {
                 return results;
             }
 
-            NodeList entries = doc.getElementsByTagNameNS(NS_ATOM, "entry");
-            if (entries.getLength() == 0) {
-                entries = doc.getElementsByTagName("entry");
-            }
+            NodeList entries = doc.getElementsByTagNameNS("*", "entry");
 
             for (int i = 0; i < entries.getLength(); i++) {
                 Element entry = (Element) entries.item(i);
@@ -69,7 +67,7 @@ public final class AdtXmlParser {
                 results.add(obj);
             }
         } catch (Exception e) {
-            System.err.println("AdtXmlParser.parseSearchResults failed: " + e.getMessage());
+            throw new IllegalStateException("Cannot parse ADT search response: " + e.getMessage(), e);
         }
 
         return results;
@@ -221,6 +219,16 @@ public final class AdtXmlParser {
         return (value != null && !value.isEmpty()) ? value : defaultValue;
     }
 
+    /** First direct child element with the given local name (any namespace), or null. */
+    private static Element firstChildNS(Element parent, String localName) {
+        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element && localName.equals(n.getLocalName())) {
+                return (Element) n;
+            }
+        }
+        return null;
+    }
+
     private static String childText(Element parent, String tagName, String defaultValue) {
         if (parent == null) return defaultValue;
         NodeList children = parent.getElementsByTagName(tagName);
@@ -351,39 +359,39 @@ public final class AdtXmlParser {
         try {
             Document doc = parseDocument(xml);
 
-            // Parse column metadata
-            NodeList metadataNodes = doc.getElementsByTagName("dataPreview:column");
-            if (metadataNodes.getLength() == 0) {
-                metadataNodes = doc.getElementsByTagName("column");
-            }
+            // ADT data preview is column-oriented:
+            //   <dataPreview:columns>
+            //     <dataPreview:metadata dataPreview:name=".." .../>
+            //     <dataPreview:dataSet><dataPreview:data>v1</..><dataPreview:data>v2</..></..>
+            //   </dataPreview:columns>   (one block per column)
+            // Transpose it into rows for the caller.
+            NodeList columnNodes = doc.getElementsByTagNameNS("*", "columns");
+            List<List<String>> valuesPerColumn = new ArrayList<>();
+            int rowTotal = 0;
 
-            for (int i = 0; i < metadataNodes.getLength(); i++) {
-                Element col = (Element) metadataNodes.item(i);
+            for (int i = 0; i < columnNodes.getLength(); i++) {
+                Element colBlock = (Element) columnNodes.item(i);
+                Element meta = firstChildNS(colBlock, "metadata");
+
                 JsonObject colObj = new JsonObject();
-                colObj.addProperty("name", attr(col, "dataPreview:name", attr(col, "name", "COL" + i)));
-                colObj.addProperty("type", attr(col, "dataPreview:type", attr(col, "type", "")));
-                colObj.addProperty("description", attr(col, "dataPreview:description", attr(col, "description", "")));
+                colObj.addProperty("name", attr(meta, "dataPreview:name", "COL" + i));
+                colObj.addProperty("type", attr(meta, "dataPreview:type", ""));
+                colObj.addProperty("description", attr(meta, "dataPreview:description", ""));
                 columns.add(colObj);
-            }
 
-            // Parse data rows
-            NodeList dataRows = doc.getElementsByTagName("dataPreview:row");
-            if (dataRows.getLength() == 0) {
-                dataRows = doc.getElementsByTagName("row");
-            }
-
-            for (int i = 0; i < dataRows.getLength(); i++) {
-                Element row = (Element) dataRows.item(i);
-                JsonArray rowData = new JsonArray();
-
-                NodeList values = row.getElementsByTagName("dataPreview:value");
-                if (values.getLength() == 0) {
-                    values = row.getElementsByTagName("value");
+                List<String> values = new ArrayList<>();
+                NodeList dataNodes = colBlock.getElementsByTagNameNS("*", "data");
+                for (int j = 0; j < dataNodes.getLength(); j++) {
+                    values.add(dataNodes.item(j).getTextContent());
                 }
+                valuesPerColumn.add(values);
+                rowTotal = Math.max(rowTotal, values.size());
+            }
 
-                for (int j = 0; j < values.getLength(); j++) {
-                    String val = values.item(j).getTextContent();
-                    rowData.add(val != null ? val : "");
+            for (int r = 0; r < rowTotal; r++) {
+                JsonArray rowData = new JsonArray();
+                for (List<String> values : valuesPerColumn) {
+                    rowData.add(r < values.size() ? values.get(r) : "");
                 }
                 rows.add(rowData);
             }
@@ -391,7 +399,7 @@ public final class AdtXmlParser {
             result.addProperty("rowCount", rows.size());
 
         } catch (Exception e) {
-            System.err.println("AdtXmlParser.parseDataPreview failed: " + e.getMessage());
+            throw new IllegalStateException("Cannot parse ADT data preview response: " + e.getMessage(), e);
         }
 
         return result;
