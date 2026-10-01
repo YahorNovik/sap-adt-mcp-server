@@ -110,6 +110,7 @@ public class SetSourceTool extends AbstractMcpTool {
             throw new RuntimeException("Failed to acquire lock on " + lockUrl + ". Response: " + lockResp.body());
         }
 
+        JsonObject output;
         try {
             // Write
             String writePath = sourceUrl + "?lockHandle=" + urlEncode(lockHandle);
@@ -120,40 +121,45 @@ public class SetSourceTool extends AbstractMcpTool {
             HttpResponse<String> response = client.putWithHeaders(writePath, source,
                     "text/plain; charset=utf-8", STATEFUL_HEADERS);
 
-            JsonObject output = new JsonObject();
+            output = new JsonObject();
             output.addProperty("status", "success");
             output.addProperty("statusCode", response.statusCode());
-
-            // Activate
-            String objectUrl = sourceUrl;
-            if (objectUrl.endsWith("/source/main")) {
-                objectUrl = objectUrl.substring(0, objectUrl.length() - "/source/main".length());
-            }
-            String objectName = extractObjectName(objectUrl);
-            try {
-                String activateXml = "<adtcore:objectReferences xmlns:adtcore=\"http://www.sap.com/adt/core\">"
-                        + "<adtcore:objectReference adtcore:uri=\"" + escapeXml(objectUrl)
-                        + "\" adtcore:name=\"" + escapeXml(objectName) + "\"/>"
-                        + "</adtcore:objectReferences>";
-
-                HttpResponse<String> actResp = client.post(
-                        "/sap/bc/adt/activation?method=activate&preauditRequested=true",
-                        activateXml,
-                        "application/xml",
-                        "application/xml,application/vnd.sap.adt.inactivectsobjects.v1+xml;q=0.9");
-
-                // Activation errors come back with HTTP 200 and the messages in the body.
-                JsonObject act = AdtXmlParser.parseActivationResult(actResp.body());
-                output.addProperty("activated", act.get("success").getAsBoolean());
-                output.add("activationMessages", act.get("messages"));
-            } catch (Exception e) {
-                output.addProperty("activated", false);
-                output.addProperty("activationError", e.getMessage());
-            }
-
-            return output.toString();
         } finally {
             safeUnlock(lockUrl, lockHandle);
+        }
+
+        // Activate only AFTER unlocking: activation runs in a separate (stateless)
+        // session and fails with EU510 "User ... is currently editing" (HTTP 403)
+        // while the object is still locked by the write session.
+        activate(sourceUrl, output);
+        return output.toString();
+    }
+
+    private void activate(String sourceUrl, JsonObject output) {
+        String objectUrl = sourceUrl;
+        if (objectUrl.endsWith("/source/main")) {
+            objectUrl = objectUrl.substring(0, objectUrl.length() - "/source/main".length());
+        }
+        String objectName = extractObjectName(objectUrl);
+        try {
+            String activateXml = "<adtcore:objectReferences xmlns:adtcore=\"http://www.sap.com/adt/core\">"
+                    + "<adtcore:objectReference adtcore:uri=\"" + escapeXml(objectUrl)
+                    + "\" adtcore:name=\"" + escapeXml(objectName) + "\"/>"
+                    + "</adtcore:objectReferences>";
+
+            HttpResponse<String> actResp = client.post(
+                    "/sap/bc/adt/activation?method=activate&preauditRequested=true",
+                    activateXml,
+                    "application/xml",
+                    "application/xml,application/vnd.sap.adt.inactivectsobjects.v1+xml;q=0.9");
+
+            // Activation errors come back with HTTP 200 and the messages in the body.
+            JsonObject act = AdtXmlParser.parseActivationResult(actResp.body());
+            output.addProperty("activated", act.get("success").getAsBoolean());
+            output.add("activationMessages", act.get("messages"));
+        } catch (Exception e) {
+            output.addProperty("activated", false);
+            output.addProperty("activationError", e.getMessage());
         }
     }
 
